@@ -6,24 +6,25 @@ Arranca con:  python -m asistente.main   (desde la raíz del proyecto)
 Todo corre en tu ordenador: el servidor es local y las claves nunca se suben.
 """
 
+import json
 import os
 import sys
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Permitir ejecutar "python -m asistente.main" desde la raíz del repo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from . import agent, config, conversaciones, pc, providers  # noqa: E402
+from . import agent, config, conversaciones, pc, providers, recordatorios  # noqa: E402
 from .memory import borrar as memory_borrar  # noqa: E402
 from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.0.0")
+app = FastAPI(title="MiClaw", version="1.1.0")
 
 
 # ---------------------------------------------------------------- modelos
@@ -116,15 +117,20 @@ def elegir_modelo(body: ModelBody):
 
 @app.post("/api/chat")
 def chat(body: ChatBody):
-    try:
-        resultado = agent.responder(
-            body.messages, body.provider, body.model, tool_result=body.tool_result
-        )
-        return resultado
-    except providers.ProviderError as e:
-        return {"tipo": "error", "texto": str(e)}
-    except Exception as e:
-        return {"tipo": "error", "texto": f"Error interno: {e}"}
+    """Streaming real (NDJSON): cada línea es un evento {tipo, ...}."""
+
+    def gen():
+        try:
+            for ev in agent.responder_stream(
+                body.messages, body.provider, body.model, tool_result=body.tool_result
+            ):
+                yield json.dumps(ev, ensure_ascii=False) + "\n"
+        except providers.ProviderError as e:
+            yield json.dumps({"tipo": "error", "texto": str(e)}, ensure_ascii=False) + "\n"
+        except Exception as e:
+            yield json.dumps({"tipo": "error", "texto": f"Error interno: {e}"}, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
 @app.post("/api/probar")
@@ -216,6 +222,22 @@ def conversaciones_guardar(cid: str, body: ConvGuardarBody):
 @app.delete("/api/conversaciones/{cid}")
 def conversaciones_borrar(cid: str):
     return {"ok": conversaciones.borrar(cid)}
+
+
+# ---------------------------------------------------------------- recordatorios
+@app.get("/api/recordatorios")
+def recordatorios_listar():
+    return {"recordatorios": recordatorios.listar()}
+
+
+@app.get("/api/recordatorios/vencidos")
+def recordatorios_vencidos():
+    return {"vencidos": recordatorios.vencidos()}
+
+
+@app.delete("/api/recordatorios/{rid}")
+def recordatorios_borrar(rid: str):
+    return {"ok": recordatorios.borrar(rid)}
 
 
 # ---------------------------------------------------------------- memoria

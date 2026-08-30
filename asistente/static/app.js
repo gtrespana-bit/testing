@@ -1,5 +1,5 @@
 /* ============================================================
-   MiClaw — frontend premium
+   MiClaw — frontend premium (v1.1: streaming, voz, temas, más)
    ============================================================ */
 "use strict";
 
@@ -26,7 +26,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove("show"), 2800);
+  t._timer = setTimeout(() => t.classList.remove("show"), 3200);
 }
 
 function esc(s) {
@@ -44,7 +44,8 @@ function fechaRelativa(iso) {
   const d = new Date(iso.replace(" ", "T"));
   const hoy = new Date();
   const ayer = new Date(hoy.getTime() - 864e5);
-  if (d.toDateString() === hoy.toDateString()) return "hoy " + d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === hoy.toDateString())
+    return "hoy " + d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === ayer.toDateString()) return "ayer";
   return d.toLocaleDateString("es", { day: "numeric", month: "short" });
 }
@@ -52,6 +53,12 @@ function fechaRelativa(iso) {
 function scrollBottom() {
   const m = $("messages");
   m.scrollTop = m.scrollHeight;
+}
+
+let _ultimoScroll = 0;
+function scrollThrottled() {
+  const t = Date.now();
+  if (t - _ultimoScroll > 80) { _ultimoScroll = t; scrollBottom(); }
 }
 
 /* ---------------- markdown (renderizador ligero y seguro) ---------------- */
@@ -78,7 +85,7 @@ function mdTable(rows) {
   const parse = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => mdInline(c.trim()));
   const header = parse(rows[0]);
   const sep = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
-  let body = rows.slice(1).filter((r) => !sep.test(r));
+  const body = rows.slice(1).filter((r) => !sep.test(r));
   let h = "<table><thead><tr>" + header.map((c) => `<th>${c}</th>`).join("") + "</tr></thead>";
   if (body.length) h += "<tbody>" + body.map((r) => "<tr>" + parse(r).map((c) => `<td>${c}</td>`).join("") + "</tr>").join("") + "</tbody>";
   return h + "</table>";
@@ -89,7 +96,6 @@ function renderMarkdown(src) {
   let html = "", i = 0;
   let inCode = false, codeLang = "", codeBuf = [];
   let listTag = null;
-
   const flushList = () => { if (listTag) { html += `</${listTag}>`; listTag = null; } };
 
   while (i < lines.length) {
@@ -140,7 +146,7 @@ function renderMarkdown(src) {
 
 /* ---------------- mensajes ---------------- */
 
-function addMsg(role, texto, extra = {}) {
+function addMsg(role, texto) {
   const cont = $("messages");
   const row = document.createElement("div");
   row.className = "msg-row " + (role === "user" ? "user" : role === "error" ? "assistant error" : role);
@@ -149,14 +155,10 @@ function addMsg(role, texto, extra = {}) {
     <div class="msg-avatar">${avatar}</div>
     <div class="msg-body">
       <div class="msg-bubble">${esc(texto)}</div>
-      ${role === "assistant" || role === "user" ? `<div class="msg-time">${ahora()}</div>` : ""}
-      ${role === "assistant" ? `<div class="msg-actions">
-          <button class="msg-act" data-act="copy">⧉ Copiar</button>
-          <button class="msg-act" data-act="regen">↻ Regenerar</button>
-        </div>` : ""}
+      <div class="msg-time">${ahora()}</div>
     </div>`;
   cont.appendChild(row);
-  cont.scrollTop = cont.scrollHeight;
+  scrollBottom();
   return row;
 }
 
@@ -165,48 +167,36 @@ function addMarkdown(role, texto) {
   const row = document.createElement("div");
   row.className = "msg-row " + role;
   const avatar = role === "user" ? "👤" : "🦞";
+  const acciones = role === "assistant"
+    ? `<div class="msg-actions">
+        <button class="msg-act" data-act="copy">⧉ Copiar</button>
+        <button class="msg-act" data-act="regen">↻ Regenerar</button>
+        <button class="msg-act" data-act="speak">🔊 Leer</button>
+      </div>`
+    : "";
   row.innerHTML = `
     <div class="msg-avatar">${avatar}</div>
     <div class="msg-body">
-      <div class="msg-bubble"></div>
+      <div class="msg-bubble md"></div>
       <div class="msg-time">${ahora()}</div>
-      <div class="msg-actions">
-        <button class="msg-act" data-act="copy">⧉ Copiar</button>
-        <button class="msg-act" data-act="regen">↻ Regenerar</button>
-      </div>
+      ${acciones}
     </div>`;
   row.querySelector(".msg-bubble").innerHTML = renderMarkdown(texto);
-  row.querySelector(".msg-bubble").classList.add("md");
   cont.appendChild(row);
-  cont.scrollTop = cont.scrollHeight;
+  scrollBottom();
   return row;
 }
 
-/* máquina de escribir */
-function typewrite(row, texto, done) {
-  const bubble = row.querySelector(".msg-bubble");
-  bubble.classList.add("md");
-  let i = 0;
-  const CH = 3, D = 13;
-  const t = {};
-  const finish = () => {
-    if (!t.id) return;
-    clearInterval(t.id); t.id = null;
-    bubble.innerHTML = renderMarkdown(texto);
-    row.onclick = null;
-    if (done) done();
-    scrollBottom();
-  };
-  t.id = setInterval(() => {
-    i += CH;
-    bubble.textContent = texto.slice(0, i) + "▍";
-    scrollBottom();
-    if (i >= texto.length) finish();
-  }, D);
-  row.onclick = (e) => {
-    if (e.target.closest("a") || e.target.closest("button")) return;
-    finish();
-  };
+function crearFilaStream() {
+  const cont = $("messages");
+  const row = document.createElement("div");
+  row.className = "msg-row assistant";
+  row.innerHTML = `
+    <div class="msg-avatar">🦞</div>
+    <div class="msg-body"><div class="msg-bubble"></div></div>`;
+  cont.appendChild(row);
+  scrollBottom();
+  return { row, bubble: row.querySelector(".msg-bubble") };
 }
 
 function mostrarPensando(texto) {
@@ -220,11 +210,10 @@ function mostrarPensando(texto) {
       <span class="thinking-txt">${esc(texto)}</span>
     </div></div>`;
   cont.appendChild(row);
-  cont.scrollTop = cont.scrollHeight;
+  scrollBottom();
   return row;
 }
 
-/* tarjeta de permiso (acción sobre el PC) */
 function tarjetaPermiso(plan) {
   const cont = $("messages");
   const row = document.createElement("div");
@@ -253,7 +242,7 @@ function tarjetaPermiso(plan) {
       </div>
     </div>`;
   cont.appendChild(row);
-  cont.scrollTop = cont.scrollHeight;
+  scrollBottom();
   return row;
 }
 
@@ -302,7 +291,6 @@ function nuevaConversacion() {
   $("messages").innerHTML = "";
   $("welcome").style.display = "flex";
   $("chat-titulo").textContent = "Nueva conversación";
-  pintarListaConversaciones([]);
   cargarListaConversaciones();
   $("input").focus();
 }
@@ -343,7 +331,7 @@ async function cargarConversacion(id) {
   scrollBottom();
 }
 
-/* ---------------- envío de mensajes ---------------- */
+/* ---------------- envío con STREAMING ---------------- */
 
 async function enviar() {
   const input = $("input");
@@ -353,6 +341,7 @@ async function enviar() {
   $("welcome").style.display = "none";
   addMarkdown("user", texto);
   historial.push({ role: "user", content: texto });
+  pendiente = null; // un mensaje nuevo resetea cualquier flujo de herramienta anterior
   input.value = "";
   autosize(input);
   await crearSiHaceFalta();
@@ -366,12 +355,21 @@ async function pedirRespuesta() {
 
   const prov = estado?.proveedores?.[estado.proveedor];
   const pensando = mostrarPensando(`Conectando con ${prov?.nombre || estado?.proveedor || "…"}`);
-  const pensarTxt = pensando.querySelector(".thinking-txt");
-  const frases = ["Pensando…", "Consultando…", "Casi listo…"];
-  let fi = 0;
   const rotador = setInterval(() => {
-    pensarTxt.textContent = frases[fi++ % frases.length];
+    const f = pensando.querySelector(".thinking-txt");
+    if (f) f.textContent = ["Pensando…", "Consultando…", "Casi listo…"][Math.floor(Math.random() * 3)];
   }, 4200);
+
+  let fila = null;          // burbuja provisional del asistente (streaming)
+  let acumulado = "";
+  let finalizado = false;
+  let pensandoVivo = true;
+
+  const quitarPensando = () => {
+    if (pensandoVivo && document.body.contains(pensando)) pensando.remove();
+    clearInterval(rotador);
+    pensandoVivo = false;
+  };
 
   try {
     const body = { messages: historial };
@@ -379,52 +377,111 @@ async function pedirRespuesta() {
       body.tool_result = pendiente.resultado;
       pendiente = null;
     }
-    const res = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
-    clearInterval(rotador);
-    pensando.remove();
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok || !res.body) throw new Error("respuesta no válida");
 
-    if (res.tipo === "error") {
-      addMsg("error", "⚠️ " + res.texto);
-    } else if (res.tipo === "permiso") {
-      pendiente = { accion: res.accion, datos: res.datos };
-      const card = tarjetaPermiso(res);
-      card.querySelector("#permiso-si").onclick = async () => {
-        card.remove();
-        const ejec = await api("/api/pc/ejecutar", {
-          method: "POST",
-          body: JSON.stringify({ accion: res.accion, datos: res.datos }),
-        });
-        historial.push({ role: "assistant", content: res.texto });
-        pendiente = { resultado: ejec.resultado };
-        addMsg("toolnote", "✔ Acción aprobada y ejecutada.");
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch { continue; }
+
+        if (ev.tipo === "token") {
+          if (!fila) { quitarPensando(); fila = crearFilaStream(); }
+          acumulado += ev.texto;
+          fila.bubble.textContent = acumulado + "▍";
+          scrollThrottled();
+        } else if (ev.tipo === "tool") {
+          if (fila) { fila.row.remove(); fila = null; }
+          acumulado = "";
+          addMsg("toolnote", "🔧 He usado la herramienta «" + (ev.nombre || ev.id) + "»");
+        } else if (ev.tipo === "permiso") {
+          if (fila) { fila.row.remove(); fila = null; }
+          acumulado = "";
+          pendiente = { accion: ev.accion, datos: ev.datos };
+          const card = tarjetaPermiso(ev);
+          card.querySelector("#permiso-si").onclick = async () => {
+            card.remove();
+            const ejec = await api("/api/pc/ejecutar", {
+              method: "POST",
+              body: JSON.stringify({ accion: ev.accion, datos: ev.datos }),
+            });
+            historial.push({ role: "assistant", content: ev.texto });
+            pendiente = { resultado: ejec.resultado };
+            addMsg("toolnote", "✔ Acción aprobada y ejecutada.");
+            guardarConversacion();
+            await pedirRespuesta();
+          };
+          card.querySelector("#permiso-no").onclick = async () => {
+            card.remove();
+            historial.push({ role: "assistant", content: ev.texto });
+            pendiente = { resultado: "El usuario RECHAZÓ la acción. No la ejecutes; pregúntale si quiere otra cosa." };
+            addMsg("toolnote", "✖ Acción rechazada.");
+            guardarConversacion();
+            await pedirRespuesta();
+          };
+          finalizado = true;
+        } else if (ev.tipo === "error") {
+          if (fila) { fila.row.remove(); fila = null; }
+          addMsg("error", "⚠️ " + ev.texto);
+          finalizado = true;
+        } else if (ev.tipo === "done") {
+          if (fila) {
+            const textoFinal = acumulado;
+            fila.bubble.classList.add("md");
+            fila.bubble.innerHTML = renderMarkdown(textoFinal || "_(sin respuesta)_");
+            const body = fila.row.querySelector(".msg-body");
+            const time = document.createElement("div");
+            time.className = "msg-time";
+            time.textContent = ahora();
+            const acc = document.createElement("div");
+            acc.className = "msg-actions";
+            acc.innerHTML = `
+              <button class="msg-act" data-act="copy">⧉ Copiar</button>
+              <button class="msg-act" data-act="regen">↻ Regenerar</button>
+              <button class="msg-act" data-act="speak">🔊 Leer</button>`;
+            body.appendChild(time);
+            body.appendChild(acc);
+            historial.push({ role: "assistant", content: textoFinal });
+            guardarConversacion();
+            if ($("toggle-voz").checked && textoFinal.trim()) leerTexto(textoFinal);
+          }
+          fila = null;
+          acumulado = "";
+          finalizado = true;
+        }
+      }
+    }
+
+    if (!finalizado) {
+      if (fila) {
+        fila.bubble.classList.add("md");
+        fila.bubble.innerHTML = renderMarkdown(acumulado || "_(sin respuesta)_");
+        historial.push({ role: "assistant", content: acumulado });
         guardarConversacion();
-        await pedirRespuesta();
-      };
-      card.querySelector("#permiso-no").onclick = async () => {
-        card.remove();
-        historial.push({ role: "assistant", content: res.texto });
-        pendiente = { resultado: "El usuario RECHAZÓ la acción. No la ejecutes; pregúntale si quiere otra cosa." };
-        addMsg("toolnote", "✖ Acción rechazada.");
-        guardarConversacion();
-        await pedirRespuesta();
-      };
-    } else {
-      const row = addMarkdown("assistant", "");
-      typewrite(row, res.texto, () => {
-        historial.push({ role: "assistant", content: res.texto });
-        guardarConversacion();
-      });
-      if (!res.texto || !res.texto.trim()) {
-        row.querySelector(".msg-bubble").innerHTML = renderMarkdown("_(sin respuesta)_");
-        historial.push({ role: "assistant", content: "" });
-        guardarConversacion();
+      } else {
+        addMsg("error", "⚠️ La conexión se cortó a mitad de la respuesta.");
       }
     }
   } catch (e) {
-    clearInterval(rotador);
-    pensando.remove();
+    if (fila) fila.row.remove();
     addMsg("error", "⚠️ No se pudo conectar con el servidor. ¿Está arrancado?");
   } finally {
+    quitarPensando();
     ocupado = false;
     $("btn-send").disabled = false;
     $("input").focus();
@@ -453,14 +510,12 @@ document.addEventListener("click", async (e) => {
     const bubble = row?.querySelector(".msg-bubble");
     const texto = bubble ? (bubble.textContent || "") : "";
     if (act.dataset.act === "copy") {
-      try {
-        await navigator.clipboard.writeText(texto);
-        toast("Copiado al portapapeles");
-      } catch {
-        toast("No se pudo copiar");
-      }
+      try { await navigator.clipboard.writeText(texto); toast("Copiado al portapapeles"); }
+      catch { toast("No se pudo copiar"); }
     } else if (act.dataset.act === "regen") {
       regenerar();
+    } else if (act.dataset.act === "speak") {
+      leerTexto(texto);
     }
     return;
   }
@@ -471,11 +526,141 @@ document.addEventListener("click", async (e) => {
       await navigator.clipboard.writeText(pre.textContent);
       cb.textContent = "✔ Copiado";
       setTimeout(() => (cb.textContent = "⧉ Copiar"), 1600);
-    } catch {
-      toast("No se pudo copiar");
-    }
+    } catch { toast("No se pudo copiar"); }
   }
 });
+
+/* ---------------- VOZ ---------------- */
+
+let vozUtter = null;
+
+function leerTexto(texto) {
+  if (!("speechSynthesis" in window)) { toast("Tu navegador no soporta voz"); return; }
+  if (vozUtter) { speechSynthesis.cancel(); vozUtter = null; return; }
+  const u = new SpeechSynthesisUtterance(texto);
+  u.lang = "es-ES";
+  const voces = speechSynthesis.getVoices();
+  const uri = localStorage.getItem("miclaw-voz-uri");
+  const voz = voces.find((v) => v.voiceURI === uri) || voces.find((v) => /^es/i.test(v.lang));
+  if (voz) u.voice = voz;
+  u.rate = parseFloat(localStorage.getItem("miclaw-voz-rate") || "1");
+  u.onend = () => { vozUtter = null; };
+  u.onerror = () => { vozUtter = null; };
+  vozUtter = u;
+  speechSynthesis.speak(u);
+}
+
+function cargarVoces() {
+  if (!("speechSynthesis" in window)) return;
+  const sel = $("select-voz");
+  const voces = speechSynthesis.getVoices().filter((v) => /^es/i.test(v.lang));
+  if (!voces.length) { sel.innerHTML = `<option value="">(sin voces en español)</option>`; return; }
+  const uri = localStorage.getItem("miclaw-voz-uri");
+  sel.innerHTML = voces.map((v) =>
+    `<option value="${esc(v.voiceURI)}" ${v.voiceURI === uri ? "selected" : ""}>${esc(v.name)}</option>`
+  ).join("");
+  sel.onchange = () => localStorage.setItem("miclaw-voz-uri", sel.value);
+}
+
+/* dictado por micrófono */
+let reconocedor = null;
+
+function dictar() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast("Tu navegador no soporta dictado (prueba Chrome o Edge)"); return; }
+  if (reconocedor) {
+    reconocedor.stop();
+    reconocedor = null;
+    $("btn-mic").classList.remove("active");
+    return;
+  }
+  reconocedor = new SR();
+  reconocedor.lang = "es-ES";
+  reconocedor.interimResults = true;
+  reconocedor.continuous = false;
+  reconocedor.onresult = (e) => {
+    let txt = "";
+    for (const r of e.results) txt += r[0].transcript;
+    $("input").value = txt;
+    autosize($("input"));
+  };
+  reconocedor.onend = () => { reconocedor = null; $("btn-mic").classList.remove("active"); };
+  reconocedor.onerror = (err) => {
+    reconocedor = null;
+    $("btn-mic").classList.remove("active");
+    if (err.error !== "aborted") toast("Error de dictado: " + err.error);
+  };
+  reconocedor.start();
+  $("btn-mic").classList.add("active");
+  toast("🎤 Escuchando… habla ahora");
+}
+
+/* ---------------- TEMAS ---------------- */
+
+function aplicarTema(t) {
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem("miclaw-tema", t);
+  $("btn-tema").textContent = t === "dark" ? "☀️ Tema claro" : "🌙 Tema oscuro";
+}
+
+/* ---------------- recordatorios ---------------- */
+
+function notificar(titulo, cuerpo) {
+  toast("⏰ " + titulo + " — " + cuerpo);
+  if ("Notification" in window) {
+    if (Notification.permission === "granted") {
+      try { new Notification(titulo, { body: cuerpo }); } catch { /* noop */ }
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }
+}
+
+async function cargarRecordatorios() {
+  try {
+    const res = await api("/api/recordatorios");
+    pintarRecordatorios(res.recordatorios || []);
+  } catch { /* servidor apagado */ }
+}
+
+function pintarRecordatorios(lista) {
+  const cont = $("recordatorios-list");
+  cont.innerHTML = "";
+  if (!lista.length) {
+    cont.innerHTML = `<div class="empty-state">Sin recordatorios.<br>Pídele a MiClaw: «recuérdame llamar a Ana mañana a las 9»</div>`;
+    return;
+  }
+  for (const r of lista) {
+    const card = document.createElement("div");
+    card.className = "apunte-card";
+    card.innerHTML = `
+      <div class="ap-icon">⏰</div>
+      <div class="ap-body">
+        <div class="ap-contenido">${esc(r.texto)}</div>
+        <div class="ap-fecha">${esc(r.cuando)}</div>
+      </div>
+      <button class="ap-del" data-rid="${esc(r.id)}">✕</button>`;
+    card.querySelector(".ap-del").onclick = async () => {
+      await api("/api/recordatorios/" + r.id, { method: "DELETE" });
+      cargarRecordatorios();
+    };
+    cont.appendChild(card);
+  }
+}
+
+function iniciarVigilanciaRecordatorios() {
+  setInterval(async () => {
+    try {
+      const res = await api("/api/recordatorios/vencidos");
+      const v = res.vencidos || [];
+      for (const r of v) {
+        notificar("Recordatorio", r.texto);
+        await api("/api/recordatorios/" + r.id, { method: "DELETE" });
+      }
+      if (v.length) cargarRecordatorios();
+    } catch { /* sin servidor */ }
+  }, 15000);
+}
 
 /* ---------------- ajustes ---------------- */
 
@@ -564,7 +749,10 @@ function pintarCajaProveedor() {
   const nombre = info ? info.nombre : estado.proveedor;
   $("provider-name").textContent = nombre;
   $("provider-model").textContent = estado.modelo || "";
-  $("provider-dot").className = "dot" + (estado.proveedor === "ollama" ? (estado.ollama_activo ? " on" : "") : estado.claves[estado.proveedor] ? " on" : "");
+  const activo = estado.proveedor === "ollama"
+    ? estado.ollama_activo
+    : Boolean(estado.claves[estado.proveedor]);
+  $("provider-dot").className = "dot" + (activo ? " on" : "");
   $("chip-proveedor").textContent = nombre;
   $("welcome-provider").textContent = nombre;
   $("card-custom").style.display = estado.proveedor === "custom" ? "" : "none";
@@ -626,9 +814,9 @@ async function cargarMemoria() {
       <div class="ap-icon">📝</div>
       <div class="ap-body">
         <div class="ap-contenido">${esc(a.contenido)}</div>
-        <div class="ap-fecha">${a.nombre} · ${esc(a.fecha || "")}</div>
+        <div class="ap-fecha">${esc(a.nombre)} · ${esc(a.fecha || "")}</div>
       </div>
-      <button class="ap-del" data-apunte="${a.nombre}">✕</button>`;
+      <button class="ap-del" data-apunte="${esc(a.nombre)}">✕</button>`;
     card.querySelector(".ap-del").onclick = async () => {
       await api("/api/memoria/" + a.nombre, { method: "DELETE" });
       cargarMemoria();
@@ -664,7 +852,7 @@ function switchView(vista) {
   document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
   $("view-" + vista).classList.add("active");
   document.querySelector(`.nav-btn[data-view="${vista}"]`)?.classList.add("active");
-  if (vista === "memoria") cargarMemoria();
+  if (vista === "memoria") { cargarMemoria(); cargarRecordatorios(); }
   if (vista === "ajustes") cargarEstado();
 }
 
@@ -689,8 +877,13 @@ function autosize(ta) {
 /* ---------------- init ---------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // tema
+  aplicarTema(localStorage.getItem("miclaw-tema") || "dark");
+  $("btn-tema").onclick = () =>
+    aplicarTema(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+
   // navegación
-  document.querySelectorAll(".nav-btn").forEach((b) => {
+  document.querySelectorAll(".nav-btn[data-view]").forEach((b) => {
     b.onclick = () => switchView(b.dataset.view);
   });
   $("ir-ajustes").onclick = () => switchView("ajustes");
@@ -703,10 +896,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("chat-form").onsubmit = (e) => { e.preventDefault(); enviar(); };
   const ta = $("input");
   ta.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); enviar(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviar(); }
   });
   ta.addEventListener("input", () => autosize(ta));
   $("btn-exportar").onclick = exportarConversacion;
+  $("btn-mic").onclick = dictar;
 
   // chips de bienvenida
   document.querySelectorAll(".chip-sug").forEach((ch) => {
@@ -715,6 +909,22 @@ document.addEventListener("DOMContentLoaded", () => {
       enviar();
     };
   });
+
+  // voz
+  cargarVoces();
+  if ("speechSynthesis" in window) {
+    speechSynthesis.onvoiceschanged = cargarVoces;
+  }
+  $("toggle-voz").checked = localStorage.getItem("miclaw-voz-auto") === "1";
+  $("toggle-voz").onchange = () =>
+    localStorage.setItem("miclaw-voz-auto", $("toggle-voz").checked ? "1" : "0");
+  $("rango-voz").value = localStorage.getItem("miclaw-voz-rate") || "1";
+  $("voz-vel-label").textContent = parseFloat($("rango-voz").value).toFixed(2) + "×";
+  $("rango-voz").oninput = () => {
+    localStorage.setItem("miclaw-voz-rate", $("rango-voz").value);
+    $("voz-vel-label").textContent = parseFloat($("rango-voz").value).toFixed(2) + "×";
+  };
+  $("btn-probar-voz").onclick = () => leerTexto("Hola, soy MiClaw. ¡Listo para ayudarte!");
 
   // ajustes
   $("btn-probar").onclick = probarConexion;
@@ -746,6 +956,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") { e.preventDefault(); nuevaConversacion(); }
     if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); switchView("ajustes"); }
   });
+
+  // recordatorios
+  iniciarVigilanciaRecordatorios();
 
   // arranque
   cargarEstado();

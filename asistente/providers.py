@@ -359,6 +359,170 @@ def chat(provider, model, messages, max_tokens=None, timeout=TIMEOUT):
     raise ProviderError(f"Proveedor desconocido: {provider}")
 
 
+def stream_openai_compatible(provider, base_url, model, messages, api_key,
+                             max_tokens=None, timeout=TIMEOUT):
+    """Versión en streaming (SSE) de las APIs compatibles con OpenAI."""
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {"model": model, "messages": messages, "stream": True}
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+    url = base_url.rstrip("/") + "/chat/completions"
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("POST", url, json=payload, headers=headers) as r:
+                if r.status_code in (401, 403):
+                    raise ProviderError(f"{provider} rechazó la clave (401/403). Revísala en el panel de claves.")
+                if r.status_code == 429:
+                    raise ProviderError(f"{provider}: límite de peticiones alcanzado (429). Espera un minuto.")
+                if r.status_code == 402:
+                    raise ProviderError(f"{provider}: saldo/plan requerido (402). Usa un modelo gratuito.")
+                if r.status_code == 404:
+                    raise ProviderError(f"{provider}: el modelo '{model}' no existe o no está gratis.")
+                if r.status_code >= 400:
+                    cuerpo = r.read().decode(errors="replace")[:300]
+                    raise ProviderError(f"{provider} respondió con error {r.status_code}: {cuerpo}")
+                for line in r.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = (obj.get("choices") or [{}])[0].get("delta", {})
+                    contenido = delta.get("content")
+                    if contenido:
+                        yield contenido
+    except httpx.ConnectError:
+        raise ProviderError(f"No hay conexión con {provider}. ¿Tienes internet?")
+    except httpx.TimeoutException:
+        raise ProviderError(f"{provider} tardó demasiado en responder.")
+    except httpx.HTTPError as e:
+        raise ProviderError(f"Error de red con {provider}: {e}")
+
+
+def stream_gemini(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
+    """Versión en streaming de Gemini (SSE con streamGenerateContent)."""
+    system_parts = [m["content"] for m in messages if m["role"] == "system"]
+    rest = [m for m in messages if m["role"] != "system"]
+    contents = [
+        {"role": "user" if m["role"] in ("user", "tool") else "model",
+         "parts": [{"text": m["content"]}]}
+        for m in rest
+    ]
+    payload = {"contents": contents}
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+    if max_tokens:
+        payload["generationConfig"] = {"maxOutputTokens": max_tokens}
+
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
+           f":streamGenerateContent?alt=sse&key={api_key}")
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("POST", url, json=payload) as r:
+                if r.status_code in (400, 403):
+                    raise ProviderError(f"Gemini rechazó la petición ({r.status_code}). ¿Es válida la clave o el modelo?")
+                if r.status_code == 429:
+                    raise ProviderError("Gemini: límite de peticiones alcanzado. Espera un poco y reintenta.")
+                if r.status_code == 404:
+                    raise ProviderError(f"Gemini: el modelo '{model}' no existe o no está en el plan gratis.")
+                if r.status_code >= 400:
+                    cuerpo = r.read().decode(errors="replace")[:300]
+                    raise ProviderError(f"Gemini respondió con error {r.status_code}: {cuerpo}")
+                for line in r.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data:
+                        continue
+                    try:
+                        obj = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        parte = obj["candidates"][0]["content"]["parts"][0]["text"]
+                    except (KeyError, IndexError, TypeError):
+                        continue
+                    if parte:
+                        yield parte
+    except httpx.ConnectError:
+        raise ProviderError("No hay conexión con Google. ¿Tienes internet?")
+    except httpx.TimeoutException:
+        raise ProviderError("Gemini tardó demasiado en responder.")
+    except httpx.HTTPError as e:
+        raise ProviderError(f"Error de red con Gemini: {e}")
+
+
+def stream_ollama(model, messages, max_tokens=None, timeout=TIMEOUT):
+    """Versión en streaming de Ollama (NDJSON)."""
+    payload = {"model": model, "messages": messages, "stream": True}
+    if max_tokens:
+        payload["options"] = {"num_predict": max_tokens}
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("POST", f"{OLLAMA_URL}/api/chat", json=payload) as r:
+                if r.status_code >= 400:
+                    raise ProviderError(f"Ollama respondió con error {r.status_code}")
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    contenido = (obj.get("message") or {}).get("content")
+                    if contenido:
+                        yield contenido
+                    if obj.get("done"):
+                        break
+    except httpx.ConnectError:
+        raise ProviderError(
+            "No encuentro Ollama en el puerto 11434. "
+            "Instálalo en ollama.com y ejecuta: ollama pull " + model
+        )
+    except httpx.TimeoutException:
+        raise ProviderError("Ollama no responde. ¿Está abierto? Prueba: ollama serve")
+
+
+def stream_chat(provider, model, messages, max_tokens=None, timeout=TIMEOUT):
+    """Generador: igual que chat() pero devuelve trozos de texto en vivo."""
+    if provider == "ollama":
+        return stream_ollama(model, messages, max_tokens, timeout)
+
+    if provider == "gemini":
+        key = config.get_api_key("gemini")
+        if not key:
+            raise ProviderError("Falta la clave de Gemini. Añádela en Ajustes → Claves.")
+        return stream_gemini(model, messages, key, max_tokens, timeout)
+
+    if provider == "custom":
+        c = config.get_custom()
+        if not c["base_url"]:
+            raise ProviderError("Configura la URL base del proveedor personalizado en Ajustes.")
+        key = config.get_api_key("custom")
+        if not key:
+            raise ProviderError("Falta la clave del proveedor personalizado. Añádela en Ajustes.")
+        return stream_openai_compatible("personalizado", c["base_url"], model, messages, key,
+                                        max_tokens, timeout)
+
+    if provider in OPENAI_BASE:
+        key = config.get_api_key(provider)
+        if not key:
+            raise ProviderError(
+                f"Falta la clave de {PROVIDERS.get(provider, {}).get('nombre', provider)}. "
+                f"Añádela en Ajustes → Claves."
+            )
+        return stream_openai_compatible(
+            PROVIDERS.get(provider, {}).get("nombre", provider),
+            OPENAI_BASE[provider], model, messages, key, max_tokens, timeout,
+        )
+
+    raise ProviderError(f"Proveedor desconocido: {provider}")
+
+
 def list_ollama_models():
     """Modelos locales instalados (si Ollama está corriendo)."""
     names = _ollama_list_models()

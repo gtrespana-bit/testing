@@ -36,6 +36,11 @@ REGLAS DE USO:
   datos que puedan haber cambiado). No inventes datos que puedas consultar.
 - "nota": Úsala SOLO para datos personales importantes que el usuario quiera
   recordar a futuro (nombres, fechas, preferencias, ideas).
+- "calc": Úsala para operaciones matemáticas exactas. Escribe la expresión.
+- "recordatorio": Úsala cuando el usuario pida que le recuerdes algo en un
+  momento concreto. Formato: @@TOOL:recordatorio@@\\n{{qué recordar}} | {{cuándo}}
+  (ej: "mañana a las 9", "en 30 minutos", "el 5 de septiembre a las 14:30").
+- "clima": Úsala para preguntar por el tiempo meteorológico de un lugar.
 - "ver"/"escribir"/"terminal": acciones sobre el PC del usuario. El usuario
   DEBE aprobar cada una desde la interfaz; cuando la apruebe, verás el
   resultado como un mensaje "tool" y podrás continuar. Pide confirmación
@@ -118,3 +123,62 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
         })
 
     return {"tipo": "respuesta", "texto": "He agotado los intentos con las herramientas. Prueba a reformular la petición."}
+
+
+def responder_stream(history, provider=None, model=None, tool_result=None, max_tool_rounds=3):
+    """
+    Igual que responder() pero con STREAMING real: va emitiendo eventos:
+      {"tipo":"token","texto":...}   → trozo de la respuesta (se muestra en vivo)
+      {"tipo":"tool","id":...,"nombre":...}  → se ejecutó una herramienta automática
+      {"tipo":"permiso","accion":...,"datos":...,"texto":...} → pide aprobación al usuario
+      {"tipo":"error","texto":...}
+      {"tipo":"done"}                → respuesta completa
+    Si `tool_result` no es None, se inyecta como mensaje "tool" antes del bucle
+    (resultado de una acción de PC que el usuario ya aprobó).
+    """
+    provider = provider or config.get_provider()
+    model = model or config.get_model()
+
+    messages = [{"role": "system", "content": _build_system_prompt()}] + list(history)
+    if tool_result is not None:
+        messages.append({"role": "tool", "content": str(tool_result)})
+
+    for _ in range(max_tool_rounds + 1):
+        buffer = []
+        try:
+            for chunk in providers.stream_chat(provider, model, messages):
+                buffer.append(chunk)
+                acumulado = "".join(buffer)
+                # No reenviamos el texto si parece el inicio de un token de
+                # herramienta (así el usuario no ve "@@TOOL:..." por pantalla).
+                if not acumulado.lstrip().startswith("@@"):
+                    yield {"tipo": "token", "texto": chunk}
+        except providers.ProviderError as e:
+            yield {"tipo": "error", "texto": str(e)}
+            return
+        except Exception as e:
+            yield {"tipo": "error", "texto": f"Error interno: {e}"}
+            return
+
+        texto = "".join(buffer).strip()
+        tipo, tid, arg = _extraer_tool(texto)
+
+        if tipo is None:
+            yield {"tipo": "done"}
+            return
+
+        if tipo == "pc":
+            yield {"tipo": "permiso", "accion": tid, "datos": arg, "texto": texto}
+            return
+
+        # herramienta automática: se ejecuta y se continúa en otra ronda
+        nombre = next((t["nombre"] for t in tools.TOOLS if t["id"] == tid), tid)
+        yield {"tipo": "tool", "id": tid, "nombre": nombre}
+        resultado = tools.ejecutar(tid, arg)
+        messages.append({"role": "assistant", "content": texto})
+        messages.append({
+            "role": "tool",
+            "content": f"Resultado de la herramienta {tid}:\n{resultado}",
+        })
+
+    yield {"tipo": "error", "texto": "Demasiadas herramientas seguidas. Reformula la petición."}

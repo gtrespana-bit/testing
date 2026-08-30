@@ -4,8 +4,8 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.0 — premium**: interfaz rediseñada, conversaciones guardadas, Markdown,
-> máquina de escribir, botón «Probar conexión», exportar chats y más.
+> **v1.1 — nivel Dios**: streaming real, voz (leer + dictado), modo claro/oscuro,
+> calculadora, recordatorios con avisos y clima. Todo gratis.
 
 ## ✨ Qué hace
 
@@ -27,19 +27,26 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 ### Herramientas
 - 🔍 **Buscar en internet** — «busca en internet…» (DuckDuckGo, sin clave).
 - 🧠 **Memoria** — «recuerda que…» guarda apuntes con fecha en `data/memoria/`.
+- 🧮 **Calculadora** — «calcula 25*4+10», raíces, trigonometría… (segura, sin eval).
+- ⏰ **Recordatorios** — «recuérdame llamar a Ana mañana a las 9» → aviso con
+  notificación en el navegador. Entiende «en 10 minutos», «el 5 de septiembre a las 14:30»…
+- 🌤️ **Clima** — «¿qué tiempo hace en Valencia?» (wttr.in, gratis y sin clave).
 - 🖥️ **Acceso a tu PC** (siempre con tu aprobación):
   - 👀 Leer archivos · ✍️ Escribir archivos · 💻 Ejecutar comandos
   - Cada acción muestra una tarjeta **Aprobar / Rechazar**; por defecto solo
     puede tocar tu carpeta de usuario y la del proyecto (ajustable).
 
 ### Experiencia premium
+- ⚡ **Streaming real** — las respuestas aparecen palabra a palabra, en vivo.
+- 🎤 **Voz** — MiClaw lee sus respuestas en voz alta (botón 🔊 en cada mensaje,
+  opción de leer automáticamente, velocidad ajustable) y tú puedes **dictar**
+  con el micrófono 🎤 del chat (Web Speech, gratis).
+- ☀️🌙 **Modo claro y oscuro** con un clic (se recuerda tu elección).
 - 💾 **Conversaciones guardadas** — historial lateral con búsqueda, se retoma donde lo dejaste.
 - 📝 **Markdown** — respuestas con formato (código con botón «Copiar», tablas, listas…).
-- ⌨️ **Máquina de escribir** + indicador de pensamiento animado.
 - ⚡ **Botón «Probar conexión»** por proveedor (verifica tu clave en 1 clic).
 - ⬇️ **Exportar** cualquier conversación a Markdown.
-- ↻ **Regenerar** respuestas · ⧉ copiar mensajes.
-- 🎨 Diseño oscuro premium (glassmorphism + gradientes) y atajos (`Ctrl+N`, `Ctrl+,`).
+- ↻ **Regenerar** respuestas · ⧉ copiar mensajes · atajos (`Ctrl+N`, `Ctrl+,`).
 
 ## Requisitos
 

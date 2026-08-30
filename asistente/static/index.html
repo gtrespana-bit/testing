@@ -32,6 +32,7 @@
       <button class="nav-btn" data-view="chat">💬 Chat</button>
       <button class="nav-btn" data-view="ajustes">⚙️ Ajustes</button>
       <button class="nav-btn" data-view="memoria">🧠 Memoria</button>
+      <button class="nav-btn" id="btn-tema">☀️ Tema claro</button>
 
       <div class="provider-mini" id="provider-box" title="Proveedor activo">
         <span class="dot" id="provider-dot"></span>
@@ -76,6 +77,7 @@
 
       <form id="chat-form" class="composer" autocomplete="off">
         <textarea id="input" rows="1" placeholder="Escribe tu mensaje…  (Enter enviar · Shift+Enter salto)"></textarea>
+        <button type="button" class="mic-btn" id="btn-mic" title="Dictar por voz (micrófono)">🎤</button>
         <button type="submit" id="btn-send" title="Enviar">➤</button>
       </form>
     </section>
@@ -130,6 +132,20 @@
           <span>Usar la memoria (apuntes) en las conversaciones</span>
         </label>
       </div>
+
+      <div class="card">
+        <h3>6 · Voz 🎤🔊</h3>
+        <p class="hint">MiClaw puede leer sus respuestas en voz alta y tú puedes dictar con el micrófono del chat. Todo gratis y local en tu navegador (Web Speech).</p>
+        <label class="toggle-row">
+          <input type="checkbox" id="toggle-voz">
+          <span>Leer las respuestas en voz alta automáticamente</span>
+        </label>
+        <label class="mini-label" for="select-voz">Voz (español)</label>
+        <select id="select-voz"></select>
+        <label class="mini-label" for="rango-voz">Velocidad: <span id="voz-vel-label">1.00×</span></label>
+        <input type="range" id="rango-voz" min="0.5" max="1.5" step="0.05" value="1">
+        <button class="btn-primary" id="btn-probar-voz">🔊 Probar voz</button>
+      </div>
     </section>
 
     <!-- ---------- MEMORIA ---------- -->
@@ -140,6 +156,10 @@
       </div>
       <div id="apuntes-list" class="apuntes-list"></div>
       <button class="danger-btn" id="btn-borrar-memoria">🗑 Borrar toda la memoria</button>
+
+      <h3 style="margin-top:30px;">⏰ Recordatorios</h3>
+      <p class="hint">Los avisos aparecen como notificación en el navegador cuando llega la hora. Pídele a MiClaw: «recuérdame llamar a Ana mañana a las 9».</p>
+      <div id="recordatorios-list" class="apuntes-list"></div>
     </section>
   </main>
 </div>
