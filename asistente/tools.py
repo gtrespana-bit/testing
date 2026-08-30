@@ -93,6 +93,33 @@ TOOLS = [
         "formato": '@@PC:documento@@\n{ruta del archivo}',
     },
     {
+        "id": "depurar",
+        "nombre": "Depurar un script",
+        "descripcion": ("Ejecuta un script (.py, .js, .sh, .bat) y devuelve su "
+                        "salida y errores + el código, para encontrar el fallo. "
+                        "El usuario debe aprobarlo."),
+        "tipo": "permiso",
+        "formato": '@@PC:depurar@@\nRUTA: {script}\nARG: {argumentos opcionales}',
+    },
+    {
+        "id": "codigo",
+        "nombre": "Buscar en mi código (índice local)",
+        "descripcion": ("Responde preguntas sobre el código indexado: «¿dónde "
+                        "está la función que valida emails?», «¿qué hace esta "
+                        "clase?». Busca en el índice local (sin permiso)."),
+        "tipo": "auto",
+        "formato": '@@TOOL:codigo@@\n{pregunta sobre el código}',
+    },
+    {
+        "id": "informe",
+        "nombre": "Guardar informe",
+        "descripcion": ("Guarda un resumen o informe como archivo Markdown en "
+                        "data/informes/ para tenerlo siempre. Úsala cuando el "
+                        "usuario pida «guarda un informe/resumen de esto»."),
+        "tipo": "auto",
+        "formato": '@@TOOL:informe@@\n{título} | {contenido en markdown}',
+    },
+    {
         "id": "apuntes",
         "nombre": "Leer mis apuntes de memoria",
         "descripcion": ("Muestra todos los apuntes guardados (la memoria de MiClaw). "
@@ -147,7 +174,12 @@ def ejecutar(tool_id, argumento):
         return _crear_recordatorio(argumento)
     if tool_id == "clima":
         return _clima(argumento)
-    if tool_id in ("ver", "escribir", "terminal", "apuntes", "listar", "buscar", "documento"):
+    if tool_id == "codigo":
+        return _buscar_codigo(argumento)
+    if tool_id == "informe":
+        return _guardar_informe(argumento)
+    if tool_id in ("ver", "escribir", "terminal", "apuntes", "listar", "buscar",
+                   "documento", "depurar"):
         return pc.ejecutar(tool_id, argumento)
     return "Herramienta desconocida."
 
@@ -253,6 +285,21 @@ def _crear_tarea(arg):
     prompt, cuando = arg.rsplit("|", 1)
     _tid, msg = tareas.crear(prompt, cuando)
     return msg
+
+
+def _buscar_codigo(pregunta):
+    from . import rag
+    return rag.buscar(pregunta)
+
+
+def _guardar_informe(arg):
+    from . import informes
+    if "|" not in arg:
+        return ("Formato: título | contenido — ej: "
+                "'Informe de noticias | Resumen de lo encontrado...'.")
+    titulo, contenido = arg.split("|", 1)
+    nombre = informes.guardar(titulo, contenido)
+    return f"📊 Informe guardado: data/informes/{nombre}"
 
 
 def _clima(lugar):

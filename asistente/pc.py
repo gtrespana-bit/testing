@@ -16,6 +16,7 @@ El token @@PC:...@@ es el "contrato" entre el agente y la interfaz:
 
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -131,8 +132,47 @@ def buscar_en(ruta, texto):
     return "\n".join(resultados)
 
 
+def depurar_script(ruta, argumentos=""):
+    """
+    Bucle de depuración: ejecuta un script y captura salida/errores +
+    una vista del código, para que el agente pueda diagnosticar y corregir.
+    """
+    path = Path(ruta).expanduser().resolve()
+    if not path.is_file():
+        return f"No encuentro el archivo: {ruta}"
+    ext = path.suffix.lower()
+    if ext == ".py":
+        cmd = f'"{sys.executable}" "{path}" {argumentos}'
+    elif ext in (".js", ".mjs"):
+        cmd = f'node "{path}" {argumentos}'
+    elif ext == ".sh":
+        cmd = f'bash "{path}" {argumentos}'
+    elif ext == ".bat":
+        cmd = f'cmd /c "{path}" {argumentos}'
+    else:
+        return f"No sé cómo ejecutar archivos .{ext[1:]} (prueba .py, .js, .sh o .bat)."
+    try:
+        proc = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=120, cwd=str(path.parent),
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+    except subprocess.TimeoutExpired:
+        return "El script tardó más de 120 segundos y se canceló."
+    except OSError as e:
+        return f"No pude ejecutar: {e}"
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            codigo = "\n".join(f.read().splitlines()[:200])
+    except OSError:
+        codigo = "(no se pudo leer el código)"
+    salida = (proc.stdout or "") + (proc.stderr or "")
+    return (f"Archivo: {path}\nComando: {cmd}\nCódigo de salida: {proc.returncode}\n\n"
+            f"--- SALIDA DEL PROGRAMA ---\n{salida[:4000]}\n\n"
+            f"--- CÓDIGO (primeras 200 líneas) ---\n{codigo}")
+
+
 def leer_documento(ruta):
-    """Extrae texto de PDF, Word o Excel (si están instalados los paquetes)."""
     path = Path(ruta).expanduser()
     if not path.is_file():
         return f"No encuentro el archivo: {ruta}"
@@ -222,7 +262,8 @@ def parsear(texto):
         return None, None
     accion = token[3:].strip()
     resto = texto[fin + 2:].strip()
-    if accion not in ("ver", "escribir", "terminal", "apuntes", "listar", "buscar", "documento"):
+    if accion not in ("ver", "escribir", "terminal", "apuntes", "listar",
+                      "buscar", "documento", "depurar"):
         return None, None
 
     if accion == "ver":
@@ -233,6 +274,18 @@ def parsear(texto):
 
     if accion == "documento":
         return accion, resto or None
+
+    if accion == "depurar":
+        ruta, arg = None, ""
+        for linea in resto.splitlines():
+            l = linea.strip()
+            if l.lower().startswith("ruta:"):
+                ruta = l.split(":", 1)[1].strip()
+            elif l.lower().startswith(("arg:", "args:", "argumentos:")):
+                arg = l.split(":", 1)[1].strip()
+        if ruta is None and not arg:
+            ruta = resto.strip()
+        return accion, {"ruta": ruta, "arg": arg}
 
     if accion == "buscar":
         ruta, texto = None, None
@@ -292,6 +345,10 @@ def ejecutar(accion, datos):
         return buscar_en(datos["ruta"], datos["texto"])
     if accion == "documento":
         return leer_documento(datos or "")
+    if accion == "depurar":
+        if not datos or not datos.get("ruta"):
+            return "Falta la ruta del script."
+        return depurar_script(datos["ruta"], datos.get("arg", ""))
     return "Acción desconocida."
 
 

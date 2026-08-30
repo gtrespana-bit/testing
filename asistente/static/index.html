@@ -153,6 +153,14 @@
       </div>
 
       <div class="card">
+        <h3>4b · Base de conocimiento de código (RAG)</h3>
+        <p class="hint">Indexa una carpeta de proyectos para que MiClaw responda sobre TU código: «¿dónde está la función que valida emails?». Todo local, sin enviar nada a internet.</p>
+        <input type="text" id="rag-ruta" placeholder="C:\Users\Tu\Proyectos  o  /home/tu/proyectos">
+        <button class="btn-primary" id="btn-rag-indexar">🧠 Indexar ahora</button>
+        <div id="rag-estado" class="probar-resultado"></div>
+      </div>
+
+      <div class="card">
         <h3>5 · Modo de trabajo</h3>
         <p class="hint">MiClaw cambia su especialidad según el modo. El <strong>modo Programador</strong> es ideal para código, bugs y crear proyectos.</p>
         <select id="select-modo"></select>
@@ -202,6 +210,10 @@
         <button class="btn-primary" id="btn-tarea-crear" style="margin-top:0">⚡ Programar</button>
       </div>
       <div id="tareas-list" class="apuntes-list"></div>
+
+      <h3 style="margin-top:30px;">📊 Informes generados</h3>
+      <p class="hint">Resúmenes e informes que MiClaw guarda como Markdown (data/informes/). Pídele: «guarda un informe de esto».</p>
+      <div id="informes-list" class="apuntes-list"></div>
     </section>
   </main>
 </div>
@@ -211,6 +223,16 @@
   <div class="paleta-box">
     <input id="paleta-input" placeholder="⌘ Escribe un comando…  (↑↓ navegar · Enter ejecutar · Esc cerrar)">
     <div id="paleta-items"></div>
+  </div>
+</div>
+
+<div id="modal" class="paleta hidden">
+  <div class="paleta-box modal-box">
+    <div class="modal-head">
+      <span id="modal-titulo">📊 Informe</span>
+      <button class="ghost-btn" id="modal-cerrar">✕ Cerrar</button>
+    </div>
+    <pre id="modal-content" class="modal-content"></pre>
   </div>
 </div>
 

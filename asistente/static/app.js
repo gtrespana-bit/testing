@@ -313,7 +313,8 @@ const TITULOS_PERMISO = {
   ver: "👀 Leer archivo", escribir: "✍️ Escribir archivo",
   terminal: "💻 Ejecutar comando", apuntes: "🧠 Leer apuntes",
   listar: "📁 Listar carpeta", buscar: "🔍 Buscar en archivos",
-  documento: "📄 Leer documento", lote: "📦 Plan de acción múltiple",
+  documento: "📄 Leer documento", depurar: "🐞 Depurar script",
+  lote: "📦 Plan de acción múltiple",
 };
 
 function detallePermiso(accion, datos) {
@@ -322,6 +323,7 @@ function detallePermiso(accion, datos) {
   if (accion === "listar") return "RUTA: " + String(datos || "");
   if (accion === "documento") return "RUTA: " + String(datos || "");
   if (accion === "buscar" && datos) return "RUTA: " + (datos.ruta || "") + "\nTEXTO: " + (datos.texto || "");
+  if (accion === "depurar" && datos) return "RUTA: " + (datos.ruta || "") + (datos.arg ? "\nARG: " + datos.arg : "");
   if (accion === "escribir" && datos && datos.ruta) {
     return "RUTA: " + datos.ruta + "\n\n" + String(datos.contenido || "").slice(0, 500);
   }
@@ -1064,6 +1066,90 @@ function pintarCustom() {
   $("custom-modelos").value = (estado.custom.modelos || []).join("\n");
 }
 
+/* ---------------- RAG (base de conocimiento) ---------------- */
+
+function pintarRag() {
+  const est = estado.rag || {};
+  $("rag-ruta").value = est.ruta || "";
+  const out = $("rag-estado");
+  if (est.indexado) {
+    out.className = "probar-resultado ok";
+    out.textContent = `✔ ${est.archivos} archivos indexados (${est.trozos} trozos) · ${est.actualizado}`;
+  } else {
+    out.className = "probar-resultado";
+    out.textContent = "Sin índice todavía. Pulsa «Indexar ahora».";
+  }
+}
+
+async function indexarRag() {
+  const btn = $("btn-rag-indexar");
+  const out = $("rag-estado");
+  btn.disabled = true;
+  out.className = "probar-resultado loading";
+  out.textContent = "Indexando…";
+  try {
+    const r = await api("/api/rag/indexar", {
+      method: "POST",
+      body: JSON.stringify({ ruta: $("rag-ruta").value.trim() }),
+    });
+    if (r.ok) {
+      out.className = "probar-resultado ok";
+      out.textContent = `✔ ${r.archivos} archivos indexados (${r.trozos} trozos) en ${r.segundos}s`;
+      estado.rag = { indexado: true, ruta: r.ruta || $("rag-ruta").value, archivos: r.archivos, trozos: r.trozos, actualizado: "ahora" };
+    } else {
+      out.className = "probar-resultado err";
+      out.textContent = "✖ " + (r.error || "error al indexar");
+    }
+  } catch {
+    out.className = "probar-resultado err";
+    out.textContent = "✖ Sin conexión con el servidor";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------------- informes ---------------- */
+
+async function cargarInformes() {
+  try {
+    const res = await api("/api/informes");
+    const cont = $("informes-list");
+    cont.innerHTML = "";
+    const lista = res.informes || [];
+    if (!lista.length) {
+      cont.innerHTML = `<div class="empty-state">Sin informes todavía.<br>Pídele: «guarda un informe de las noticias de hoy»</div>`;
+      return;
+    }
+    for (const inf of lista) {
+      const card = document.createElement("div");
+      card.className = "apunte-card";
+      card.innerHTML = `
+        <div class="ap-icon">📊</div>
+        <div class="ap-body">
+          <div class="ap-contenido">${esc(inf.nombre)}</div>
+          <div class="ap-fecha">${esc(inf.fecha)} · ${(inf.tamano / 1024).toFixed(1)} KB</div>
+        </div>
+        <div class="informe-btns">
+          <button class="ap-del" data-ver="${esc(inf.nombre)}">👁 Ver</button>
+          <button class="ap-del" data-borrar="${esc(inf.nombre)}">✕</button>
+        </div>`;
+      card.querySelector('[data-ver]').onclick = async () => {
+        const r = await api("/api/informes/" + inf.nombre);
+        if (r.error) { toast("No se pudo leer"); return; }
+        $("modal-titulo").textContent = "📊 " + inf.nombre;
+        $("modal-content").textContent = r.contenido;
+        $("modal").classList.remove("hidden");
+      };
+      card.querySelector('[data-borrar]').onclick = async () => {
+        await api("/api/informes/" + inf.nombre, { method: "DELETE" });
+        cargarInformes();
+      };
+      cont.appendChild(card);
+    }
+  } catch { /* servidor apagado */ }
+}
+
+/* ---------------- modos ---------------- */
 function pintarModos() {
   const sel = $("select-modo");
   sel.innerHTML = "";
@@ -1170,7 +1256,7 @@ function switchView(vista) {
   document.querySelectorAll(".nav-btn[data-view]").forEach((b) => b.classList.remove("active"));
   $("view-" + vista).classList.add("active");
   document.querySelector(`.nav-btn[data-view="${vista}"]`)?.classList.add("active");
-  if (vista === "memoria") { cargarMemoria(); cargarRecordatorios(); cargarTareas(); }
+  if (vista === "memoria") { cargarMemoria(); cargarRecordatorios(); cargarTareas(); cargarInformes(); }
   if (vista === "ajustes") cargarEstado();
 }
 
@@ -1184,6 +1270,7 @@ async function cargarEstado() {
   pintarCajaProveedor();
   pintarCustom();
   pintarModos();
+  pintarRag();
   $("pc-carpeta").value = estado.pc.carpeta_extra || "";
   $("toggle-memoria").checked = estado.memoria_incluida !== false;
 }
@@ -1277,6 +1364,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ajustes
   $("btn-probar").onclick = probarConexion;
+  $("btn-rag-indexar").onclick = indexarRag;
+  $("modal-cerrar").onclick = () => $("modal").classList.add("hidden");
+  $("modal").addEventListener("click", (e) => { if (e.target.id === "modal") $("modal").classList.add("hidden"); });
   $("btn-custom").onclick = async () => {
     const modelos = $("custom-modelos").value.split("\n").map((s) => s.trim()).filter(Boolean);
     await api("/api/custom", { method: "POST", body: JSON.stringify({ base_url: $("custom-url").value.trim(), modelos }) });

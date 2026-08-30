@@ -4,9 +4,9 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.2 — modo superinteligencia**: visión (imágenes/archivos), tareas
-> autónomas, paleta de comandos, HUD de telemetría, fondo de red neuronal,
-> pantalla de arranque, instalador de Windows.
+> **v1.3 — compañero de programación**: RAG de código (pregunta sobre tus
+> proyectos), bucle de depuración (ejecuta, ve el error, corrige, repite) e
+> informes automáticos en Markdown.
 
 ## ✨ Qué hace
 
@@ -26,14 +26,24 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
   pones la URL base, los modelos y tu clave.
 
 ### Herramientas
+- 🧠 **RAG de código** — indexa una carpeta de proyectos (Ajustes → Base de
+  conocimiento) y responde sobre TU código: «¿dónde está la función que valida
+  emails?», «¿qué hace esta clase?». 100% local.
+- 🐞 **Bucle de depuración** — ejecuta un script (.py/.js/.sh/.bat), ve el
+  traceback, corrige el archivo y vuelve a probar: «arregla mi script» (cada
+  paso con tu aprobación).
+- 📊 **Informes** — «guarda un informe de esto» → archivo Markdown en
+  data/informes/, visible y consultable en Memoria → Informes.
 - 🔍 **Buscar en internet** — «busca en internet…» (DuckDuckGo, sin clave).
 - 🧠 **Memoria** — «recuerda que…» guarda apuntes con fecha en `data/memoria/`.
 - 🧮 **Calculadora** — «calcula 25*4+10», raíces, trigonometría… (segura, sin eval).
 - ⏰ **Recordatorios** — «recuérdame llamar a Ana mañana a las 9» → aviso con
-  notificación en el navegador. Entiende «en 10 minutos», «el 5 de septiembre a las 14:30»…
+  notificación en el navegador.
 - 🌤️ **Clima** — «¿qué tiempo hace en Valencia?» (wttr.in, gratis y sin clave).
 - 🖥️ **Acceso a tu PC** (siempre con tu aprobación):
   - 👀 Leer archivos · ✍️ Escribir archivos · 💻 Ejecutar comandos
+  - 📁 Listar carpetas · 🔍 Buscar texto en archivos (grep) · 📄 Leer PDF/Word/Excel
+  - 📦 **Acciones en lote**: varias acciones propuestas a la vez, apruebas las que quieras
   - Cada acción muestra una tarjeta **Aprobar / Rechazar**; por defecto solo
     puede tocar tu carpeta de usuario y la del proyecto (ajustable).
 

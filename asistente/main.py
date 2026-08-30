@@ -20,13 +20,13 @@ from pydantic import BaseModel
 # Permitir ejecutar "python -m asistente.main" desde la raíz del repo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from . import agent, config, conversaciones, pc, providers, recordatorios, tareas  # noqa: E402
+from . import agent, config, conversaciones, informes, pc, providers, rag, recordatorios, tareas  # noqa: E402
 from .memory import borrar as memory_borrar  # noqa: E402
 from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.2.0")
+app = FastAPI(title="MiClaw", version="1.3.0")
 
 
 # ---------------------------------------------------------------- modelos
@@ -115,6 +115,8 @@ def estado():
             "investigador": "🔬 Investigador — fuentes y datos rigurosos",
             "escritor": "✍️ Escritor — redacción y edición",
         },
+        "rag": rag.estado(),
+        "informes": len(informes.listar()),
     }
 
 
@@ -267,6 +269,42 @@ def recordatorios_vencidos():
 @app.delete("/api/recordatorios/{rid}")
 def recordatorios_borrar(rid: str):
     return {"ok": recordatorios.borrar(rid)}
+
+
+# ---------------------------------------------------------------- RAG de código
+class RagBody(BaseModel):
+    ruta: str = ""
+
+
+@app.get("/api/rag/estado")
+def rag_estado():
+    return rag.estado()
+
+
+@app.post("/api/rag/indexar")
+def rag_indexar(body: RagBody):
+    if body.ruta:
+        rag.set_ruta(body.ruta)
+    return rag.indexar()
+
+
+# ---------------------------------------------------------------- informes
+@app.get("/api/informes")
+def informes_listar():
+    return {"informes": informes.listar()}
+
+
+@app.get("/api/informes/{nombre}")
+def informes_leer(nombre: str):
+    contenido = informes.leer(nombre)
+    if contenido is None:
+        return {"error": "no existe"}
+    return {"nombre": nombre, "contenido": contenido}
+
+
+@app.delete("/api/informes/{nombre}")
+def informes_borrar(nombre: str):
+    return {"ok": informes.borrar(nombre)}
 
 
 # ---------------------------------------------------------------- tareas automáticas
