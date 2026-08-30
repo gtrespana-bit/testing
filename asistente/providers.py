@@ -24,6 +24,8 @@ cualquier API compatible con OpenAI):
 Las claves se guardan en data/config.json y solo se usan para llamar a la API.
 """
 
+import json
+
 import httpx
 
 from . import config
