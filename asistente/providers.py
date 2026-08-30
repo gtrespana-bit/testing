@@ -208,6 +208,23 @@ def _split_data_uri(data_uri):
         return None, None
 
 
+def _parse_json(data):
+    """Parsea un fragmento SSE sin depender de que 'json' esté en el ámbito global.
+
+    Se usa en los streamers para que el fallo clásico
+    `Error interno: name 'json' is not defined` sea imposible.
+    """
+    try:
+        _json = json
+    except NameError:
+        import json as _json
+
+    try:
+        return _json.loads(data)
+    except (_json.JSONDecodeError, ValueError, TypeError):
+        return None
+
+
 def _build_openai_messages(messages):
     """Convierte mensajes de MiClaw al formato OpenAI (con imágenes)."""
     out = []
@@ -445,9 +462,8 @@ def stream_openai_compatible(provider, base_url, model, messages, api_key,
                     data = line[5:].strip()
                     if data == "[DONE]":
                         break
-                    try:
-                        obj = json.loads(data)
-                    except json.JSONDecodeError:
+                    obj = _parse_json(data)
+                    if not isinstance(obj, dict):
                         continue
                     delta = (obj.get("choices") or [{}])[0].get("delta", {})
                     contenido = delta.get("content")
@@ -491,9 +507,8 @@ def stream_gemini(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
                     data = line[5:].strip()
                     if not data:
                         continue
-                    try:
-                        obj = json.loads(data)
-                    except json.JSONDecodeError:
+                    obj = _parse_json(data)
+                    if not isinstance(obj, dict):
                         continue
                     try:
                         parte = obj["candidates"][0]["content"]["parts"][0]["text"]
@@ -522,9 +537,8 @@ def stream_ollama(model, messages, max_tokens=None, timeout=TIMEOUT):
                 for line in r.iter_lines():
                     if not line:
                         continue
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
+                    obj = _parse_json(line)
+                    if not isinstance(obj, dict):
                         continue
                     contenido = (obj.get("message") or {}).get("content")
                     if contenido:

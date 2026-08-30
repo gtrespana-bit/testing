@@ -28,7 +28,7 @@ from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.4.0")
+app = FastAPI(title="MiClaw", version="1.4.1")
 
 # ---------------------------------------------------------------------------
 # PIN de acceso (multi-dispositivo). Token con expiración en memoria.
