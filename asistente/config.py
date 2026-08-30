@@ -80,6 +80,16 @@ def set_model(proveedor, modelo):
     save_config(config)
 
 
+def get_modo():
+    return load_config().get("modo", "general")
+
+
+def set_modo(modo):
+    cfg = load_config()
+    cfg["modo"] = modo
+    save_config(cfg)
+
+
 def get_custom():
     """Configuración del proveedor personalizado (URL base + modelos)."""
     cfg = load_config()

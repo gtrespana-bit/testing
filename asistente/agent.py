@@ -20,8 +20,39 @@ import time
 
 from . import config, pc, providers, tools
 
-SYSTEM_PROMPT = """Eres MiClaw, un asistente personal que corre en el ordenador de su dueño.
-Respondes en el idioma del usuario (normalmente español), de forma clara y útil.
+# ---------------------------------------------------------------------------
+# Modos de trabajo (personas). Se eligen en Ajustes → Modo.
+# ---------------------------------------------------------------------------
+MODOS = {
+    "general": (
+        "Eres MiClaw, un asistente personal versátil. Responde de forma clara, "
+        "cercana y útil. Si te piden código, lo escribes bien explicado."
+    ),
+    "programador": (
+        "Eres MiClaw en MODO PROGRAMADOR: un ingeniero de software senior. "
+        "Escribes código limpio y moderno, detectas bugs, explicas errores con "
+        "su causa raíz, propones la solución correcta y puedes crear proyectos "
+        "completos desde cero. Antes de escribir código, piensa la estructura; "
+        "usa las herramientas de archivos (ver/listar/buscar) para entender el "
+        "código existente y las de terminal para ejecutar y comprobar."
+    ),
+    "investigador": (
+        "Eres MiClaw en MODO INVESTIGADOR: analista riguroso. Buscas fuentes, "
+        "contrastas datos, citas lo que encuentras y distingues claramente entre "
+        "hechos verificados e hipótesis. No inventas información: si no la sabes, "
+        "usa la búsqueda web."
+    ),
+    "escritor": (
+        "Eres MiClaw en MODO ESCRITOR: redactor creativo y editor. Escribes con "
+        "estilo, corriges gramática y ortografía, adaptas el tono al público y "
+        "estructuras textos largos (informes, artículos, correos)."
+    ),
+}
+
+SYSTEM_PROMPT = """{persona}
+
+Corres en el ordenador de tu dueño. Respondes en el idioma del usuario
+(normalmente español).
 
 HOY ES: {hoy} (usa esta fecha si necesitas saber qué día es).
 
@@ -45,10 +76,11 @@ REGLAS DE USO:
   ("programa/agenda una tarea..."). Formato: @@TOOL:tarea@@\\n{{qué debe hacer}} | {{cuándo}}
   MiClaw la ejecutará solo a la hora indicada (sin acciones de PC).
 - "clima": Úsala para preguntar por el tiempo meteorológico de un lugar.
-- "ver"/"escribir"/"terminal": acciones sobre el PC del usuario. El usuario
-  DEBE aprobar cada una desde la interfaz; cuando la apruebe, verás el
-  resultado como un mensaje "tool" y podrás continuar. Pide confirmación
-  escribiendo la acción propuesta de forma clara.
+- "ver"/"escribir"/"terminal"/"listar"/"buscar"/"documento": acciones sobre el
+  PC del usuario. El usuario DEBE aprobar cada una desde la interfaz; cuando la
+  apruebe, verás el resultado como un mensaje "tool" y podrás continuar. Puedes
+  proponer VARIAS acciones seguidas (una por línea @@PC:...@@) para que se
+  aprueben en lote. Pide confirmación escribiendo la acción propuesta.
 - "apuntes": úsala cuando el usuario pregunte qué recuerdas o qué apuntes tienes.
 
 MEMORIA (lo que ya sabes de tu dueño):
@@ -68,7 +100,9 @@ def _build_system_prompt():
     contenido = memory.read_memory() if incluir else ""
     if not contenido:
         contenido = "(vacía)"
+    modo = config.get_modo()
     return SYSTEM_PROMPT.format(
+        persona=MODOS.get(modo, MODOS["general"]),
         hoy=datetime.date.today().isoformat(),
         formato=_formato_herramientas(),
         memoria=contenido,
@@ -88,7 +122,7 @@ def _extraer_tool(texto):
     return None, None, None
 
 
-def responder(history, provider=None, model=None, tool_result=None, max_tool_rounds=3,
+def responder(history, provider=None, model=None, tool_result=None, max_tool_rounds=5,
               no_pc=False):
     """
     Devuelve un dict:
@@ -122,6 +156,15 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
                                 "No la ejecutes y responde con lo que puedas."),
                 })
                 continue
+            # ¿Varias acciones en un solo mensaje? Se aprueban en lote.
+            lote = pc.parsear_lote(texto)
+            if len(lote) > 1:
+                return {
+                    "tipo": "permiso",
+                    "accion": "lote",
+                    "datos": lote,
+                    "texto": texto.strip(),
+                }
             return {
                 "tipo": "permiso",
                 "accion": tid,
@@ -140,7 +183,7 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
     return {"tipo": "respuesta", "texto": "He agotado los intentos con las herramientas. Prueba a reformular la petición."}
 
 
-def responder_stream(history, provider=None, model=None, tool_result=None, max_tool_rounds=3):
+def responder_stream(history, provider=None, model=None, tool_result=None, max_tool_rounds=5):
     """
     Igual que responder() pero con STREAMING real: va emitiendo eventos:
       {"tipo":"token","texto":...}   → trozo de la respuesta (se muestra en vivo)
@@ -188,7 +231,11 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
             return
 
         if tipo == "pc":
-            yield {"tipo": "permiso", "accion": tid, "datos": arg, "texto": texto}
+            lote = pc.parsear_lote(texto)
+            if len(lote) > 1:
+                yield {"tipo": "permiso", "accion": "lote", "datos": lote, "texto": texto}
+            else:
+                yield {"tipo": "permiso", "accion": tid, "datos": arg, "texto": texto}
             return
 
         # herramienta automática: se ejecuta y se continúa en otra ronda

@@ -309,27 +309,54 @@ function mostrarPensando() {
   return { row, rotador };
 }
 
+const TITULOS_PERMISO = {
+  ver: "👀 Leer archivo", escribir: "✍️ Escribir archivo",
+  terminal: "💻 Ejecutar comando", apuntes: "🧠 Leer apuntes",
+  listar: "📁 Listar carpeta", buscar: "🔍 Buscar en archivos",
+  documento: "📄 Leer documento", lote: "📦 Plan de acción múltiple",
+};
+
+function detallePermiso(accion, datos) {
+  if (accion === "ver") return String(datos || "");
+  if (accion === "terminal") return "COMANDO: " + String(datos || "");
+  if (accion === "listar") return "RUTA: " + String(datos || "");
+  if (accion === "documento") return "RUTA: " + String(datos || "");
+  if (accion === "buscar" && datos) return "RUTA: " + (datos.ruta || "") + "\nTEXTO: " + (datos.texto || "");
+  if (accion === "escribir" && datos && datos.ruta) {
+    return "RUTA: " + datos.ruta + "\n\n" + String(datos.contenido || "").slice(0, 500);
+  }
+  if (accion === "apuntes") return "Mostrar los apuntes guardados";
+  return "(sin datos)";
+}
+
 function tarjetaPermiso(plan) {
   const cont = $("messages");
   const row = document.createElement("div");
   row.className = "msg-row assistant permiso";
-  const titulos = {
-    ver: "👀 Leer archivo", escribir: "✍️ Escribir archivo",
-    terminal: "💻 Ejecutar comando", apuntes: "🧠 Leer apuntes",
-  };
-  let detalle = "";
-  if (plan.accion === "ver") detalle = String(plan.datos || "");
-  if (plan.accion === "terminal") detalle = String(plan.datos || "");
-  if (plan.accion === "escribir" && plan.datos && plan.datos.ruta) {
-    detalle = "RUTA: " + plan.datos.ruta + "\n\n" + String(plan.datos.contenido || "").slice(0, 500);
+  const titulo = TITULOS_PERMISO[plan.accion] || plan.accion;
+
+  let cuerpo = "";
+  if (plan.accion === "lote" && Array.isArray(plan.datos)) {
+    // varias acciones → lista con casillas
+    const items = plan.datos.map((a, i) => `
+      <div class="lote-item">
+        <label class="lote-linea">
+          <input type="checkbox" class="lote-check" data-i="${i}" checked>
+          <span><strong>${esc(TITULOS_PERMISO[a.accion] || a.accion)}</strong></span>
+        </label>
+        <pre class="permiso-detalle">${esc(detallePermiso(a.accion, a.datos))}</pre>
+      </div>`).join("");
+    cuerpo = `<div class="lote-lista">${items}</div>`;
+  } else {
+    cuerpo = `<pre class="permiso-detalle">${esc(detallePermiso(plan.accion, plan.datos))}</pre>`;
   }
-  if (plan.accion === "apuntes") detalle = "Mostrar los apuntes guardados";
+
   row.innerHTML = `
     <div class="msg-avatar">🦞</div>
     <div class="msg-body">
       <div class="msg-bubble">
-        <div class="permiso-titulo">${titulos[plan.accion] || plan.accion} — ¿lo apruebas?</div>
-        <pre class="permiso-detalle">${esc(detalle || "(sin datos)")}</pre>
+        <div class="permiso-titulo">${titulo} — ¿lo apruebas?</div>
+        ${cuerpo}
         <div class="permiso-botones">
           <button class="btn-ok" id="permiso-si">✔ Aprobar</button>
           <button class="btn-no" id="permiso-no">✖ Rechazar</button>
@@ -561,9 +588,18 @@ async function pedirRespuesta() {
           const card = tarjetaPermiso(ev);
           card.querySelector("#permiso-si").onclick = async () => {
             card.remove();
+            let accion = ev.accion, datos = ev.datos;
+            if (ev.accion === "lote" && Array.isArray(ev.datos)) {
+              // solo las acciones marcadas
+              const sel = [...card.querySelectorAll(".lote-check")]
+                .filter((c) => c.checked)
+                .map((c) => ev.datos[+c.dataset.i]);
+              if (!sel.length) { pendiente = { resultado: "El usuario no seleccionó ninguna acción." }; }
+              else { accion = "lote"; datos = sel; }
+            }
             const ejec = await api("/api/pc/ejecutar", {
               method: "POST",
-              body: JSON.stringify({ accion: ev.accion, datos: ev.datos }),
+              body: JSON.stringify({ accion, datos }),
             });
             historial.push({ role: "assistant", content: ev.texto });
             pendiente = { resultado: ejec.resultado };
@@ -904,6 +940,9 @@ function pintarTareas(lista) {
   for (const t of lista) {
     const card = document.createElement("div");
     card.className = "apunte-card tarea-card";
+    const repite = t.repite ? (t.repite.tipo === "diaria" ? " · 🔁 cada día"
+      : t.repite.tipo === "horaria" ? " · 🔁 cada hora"
+      : t.repite.tipo === "semanal" ? " · 🔁 cada semana" : "") : "";
     card.innerHTML = `
       <div class="ap-icon">🤖</div>
       <div class="ap-body">
@@ -911,7 +950,7 @@ function pintarTareas(lista) {
           ${esc(t.prompt)}
           <span class="tarea-estado ${esc(t.estado)}">${ETI[t.estado] || t.estado}</span>
         </div>
-        <div class="ap-fecha">⏱ ${esc(t.cuando)}</div>
+        <div class="ap-fecha">⏱ ${esc(t.cuando)}${repite}</div>
         ${t.resultado ? `<div class="tarea-resultado">${esc(t.resultado.slice(0, 400))}</div>` : ""}
       </div>
       <button class="ap-del" data-tid="${esc(t.id)}">✕</button>`;
@@ -1025,6 +1064,23 @@ function pintarCustom() {
   $("custom-modelos").value = (estado.custom.modelos || []).join("\n");
 }
 
+function pintarModos() {
+  const sel = $("select-modo");
+  sel.innerHTML = "";
+  for (const [id, nombre] of Object.entries(estado.modos || {})) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = nombre;
+    if (id === estado.modo) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.onchange = async () => {
+    await api("/api/config", { method: "POST", body: JSON.stringify({ modo: sel.value }) });
+    estado.modo = sel.value;
+    toast("Modo: " + (estado.modos[sel.value] || sel.value));
+  };
+}
+
 async function seleccionarProveedor(pid) {
   const modelos = estado.proveedores[pid].modelos;
   const modelo = modelos.length ? modelos[0].id : ($("select-modelo").value || "");
@@ -1127,6 +1183,7 @@ async function cargarEstado() {
   pintarClaves();
   pintarCajaProveedor();
   pintarCustom();
+  pintarModos();
   $("pc-carpeta").value = estado.pc.carpeta_extra || "";
   $("toggle-memoria").checked = estado.memoria_incluida !== false;
 }

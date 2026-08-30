@@ -67,6 +67,32 @@ TOOLS = [
         "formato": '@@PC:terminal@@\nCOMANDO: {comando}',
     },
     {
+        "id": "listar",
+        "nombre": "Listar una carpeta",
+        "descripcion": ("Muestra los archivos y carpetas de un directorio de tu "
+                        "PC con sus tamaños. Úsala para explorar proyectos o "
+                        "encontrar archivos."),
+        "tipo": "permiso",
+        "formato": '@@PC:listar@@\n{ruta de la carpeta}',
+    },
+    {
+        "id": "buscar",
+        "nombre": "Buscar texto en archivos",
+        "descripcion": ("Busca una palabra o frase dentro de los archivos de una "
+                        "carpeta (como grep). Úsala para encontrar funciones, "
+                        "errores o dónde se usa algo en un proyecto."),
+        "tipo": "permiso",
+        "formato": '@@PC:buscar@@\nRUTA: {carpeta}\nTEXTO: {palabra a buscar}',
+    },
+    {
+        "id": "documento",
+        "nombre": "Leer un documento (PDF/Word/Excel)",
+        "descripcion": ("Extrae el texto de un archivo .pdf, .docx o .xlsx para "
+                        "resumirlo o trabajar con su contenido."),
+        "tipo": "permiso",
+        "formato": '@@PC:documento@@\n{ruta del archivo}',
+    },
+    {
         "id": "apuntes",
         "nombre": "Leer mis apuntes de memoria",
         "descripcion": ("Muestra todos los apuntes guardados (la memoria de MiClaw). "
@@ -121,7 +147,7 @@ def ejecutar(tool_id, argumento):
         return _crear_recordatorio(argumento)
     if tool_id == "clima":
         return _clima(argumento)
-    if tool_id in ("ver", "escribir", "terminal", "apuntes"):
+    if tool_id in ("ver", "escribir", "terminal", "apuntes", "listar", "buscar", "documento"):
         return pc.ejecutar(tool_id, argumento)
     return "Herramienta desconocida."
 

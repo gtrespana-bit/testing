@@ -49,7 +49,7 @@ class ModelBody(BaseModel):
 
 class PcBody(BaseModel):
     accion: str
-    datos: str | dict | None = None
+    datos: str | dict | list | None = None
 
 
 class CustomBody(BaseModel):
@@ -63,6 +63,7 @@ class PcConfigBody(BaseModel):
 
 class ConfigBody(BaseModel):
     memoria_incluida: bool | None = None
+    modo: str | None = None
 
 
 class ProbarBody(BaseModel):
@@ -107,6 +108,13 @@ def estado():
         "custom": config.get_custom(),
         "pc": {"carpeta_extra": (cfg.get("pc") or {}).get("carpeta_extra", "")},
         "memoria_incluida": cfg.get("memoria_incluida", True),
+        "modo": cfg.get("modo", "general"),
+        "modos": {
+            "general": "General — asistente versátil",
+            "programador": "💻 Programador — ingeniero senior (código, bugs, proyectos)",
+            "investigador": "🔬 Investigador — fuentes y datos rigurosos",
+            "escritor": "✍️ Escritor — redacción y edición",
+        },
     }
 
 
@@ -170,6 +178,18 @@ def pc_ejecutar(body: PcBody):
             resultado = pc.ejecutar_comando(body.datos)
         elif body.accion == "apuntes":
             resultado = read_memory() or "(sin apuntes)"
+        elif body.accion == "listar" and isinstance(body.datos, str):
+            resultado = pc.listar_carpeta(body.datos)
+        elif body.accion == "buscar" and isinstance(body.datos, dict):
+            resultado = pc.buscar_en(body.datos.get("ruta", ""), body.datos.get("texto", ""))
+        elif body.accion == "documento" and isinstance(body.datos, str):
+            resultado = pc.leer_documento(body.datos)
+        elif body.accion == "lote" and isinstance(body.datos, list):
+            partes = []
+            for act in body.datos:
+                r = pc.ejecutar(act.get("accion"), act.get("datos"))
+                partes.append(f"→ {act.get('accion')}: {r}")
+            resultado = "\n\n".join(partes)
         else:
             resultado = "Acción no válida."
         return {"resultado": resultado}
@@ -196,6 +216,8 @@ def guardar_config(body: ConfigBody):
     cfg = config.load_config()
     if body.memoria_incluida is not None:
         cfg["memoria_incluida"] = body.memoria_incluida
+    if body.modo is not None:
+        cfg["modo"] = body.modo
     config.save_config(cfg)
     return {"ok": True}
 
@@ -285,6 +307,8 @@ def _bucle_tareas():
                     tareas.marcar(t["id"], "error", resultado=str(e))
                 except Exception as e:
                     tareas.marcar(t["id"], "error", resultado=f"Error interno: {e}")
+                if t.get("repite"):
+                    tareas.reagendar(t["id"])
         except Exception:
             pass
 

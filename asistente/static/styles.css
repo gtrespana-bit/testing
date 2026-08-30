@@ -574,3 +574,10 @@ body::after {
   border-bottom-right-radius: 12px; opacity: .8;
 }
 .brand h1, .welcome h1 { text-shadow: 0 0 26px rgba(124,92,255,.45); }
+
+/* ---------- lote de acciones (permiso múltiple) ---------- */
+.lote-lista { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; max-height: 320px; overflow-y: auto; }
+.lote-item { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: rgba(0,0,0,.16); }
+.lote-linea { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; margin-bottom: 6px; }
+.lote-linea input { accent-color: var(--accent); transform: scale(1.15); }
+.lote-item .permiso-detalle { margin-bottom: 0; max-height: 110px; }
