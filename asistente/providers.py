@@ -276,7 +276,7 @@ def _build_ollama_messages(messages):
 # ---------------------------------------------------------------------------
 def _ollama_list_models():
     try:
-        r = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        r = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=2)
         r.raise_for_status()
         return [m["name"] for m in r.json().get("models", [])]
     except Exception:
@@ -305,12 +305,23 @@ def ollama_chat(model, messages, max_tokens=None, timeout=TIMEOUT):
 # OpenAI-compatible (Groq, OpenRouter, Alibaba, Mistral, Cerebras, Z.ai,
 # GitHub Models, SambaNova y el proveedor personalizado)
 # ---------------------------------------------------------------------------
+def _extra_body(provider):
+    """Parámetros extra del proveedor. Para Alibaba/Qwen, si el modo
+    razonamiento está desactivado, pedimos enable_thinking=False (responde
+    mucho más rápido al no generar la cadena de pensamiento oculta)."""
+    if provider == "alibaba" and not config.get_razonamiento():
+        return {"enable_thinking": False}
+    return None
+
+
 def openai_compatible_chat(provider, base_url, model, messages, api_key,
-                           max_tokens=None, timeout=TIMEOUT):
+                           max_tokens=None, timeout=TIMEOUT, extra_body=None):
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {"model": model, "messages": _build_openai_messages(messages)}
     if max_tokens:
         payload["max_tokens"] = max_tokens
+    if extra_body:
+        payload["extra_body"] = extra_body
     url = base_url.rstrip("/") + "/chat/completions"
     with httpx.Client(timeout=timeout) as client:
         try:
@@ -429,18 +440,21 @@ def chat(provider, model, messages, max_tokens=None, timeout=TIMEOUT):
         return openai_compatible_chat(
             PROVIDERS.get(provider, {}).get("nombre", provider),
             OPENAI_BASE[provider], model, messages, key, max_tokens, timeout,
+            extra_body=_extra_body(provider),
         )
 
     raise ProviderError(f"Proveedor desconocido: {provider}")
 
 
 def stream_openai_compatible(provider, base_url, model, messages, api_key,
-                             max_tokens=None, timeout=TIMEOUT):
+                             max_tokens=None, timeout=TIMEOUT, extra_body=None):
     """Versión en streaming (SSE) de las APIs compatibles con OpenAI."""
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {"model": model, "messages": _build_openai_messages(messages), "stream": True}
     if max_tokens:
         payload["max_tokens"] = max_tokens
+    if extra_body:
+        payload["extra_body"] = extra_body
     url = base_url.rstrip("/") + "/chat/completions"
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -585,6 +599,7 @@ def stream_chat(provider, model, messages, max_tokens=None, timeout=TIMEOUT):
         return stream_openai_compatible(
             PROVIDERS.get(provider, {}).get("nombre", provider),
             OPENAI_BASE[provider], model, messages, key, max_tokens, timeout,
+            extra_body=_extra_body(provider),
         )
 
     raise ProviderError(f"Proveedor desconocido: {provider}")

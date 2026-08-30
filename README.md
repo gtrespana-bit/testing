@@ -4,8 +4,9 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.4 — nivel 4**: diff visual antes de cada modificación, captura de
-> pantalla con visión, y acceso multi-dispositivo con PIN.
+> **v1.5**: auto-aprobación opcional (ejecuta comandos y herramientas sin
+> confirmar cada uno), modo rápido para Qwen (sin cadena de pensamiento),
+> y acceso multi-dispositivo con PIN.
 >
 > 📘 **Documentación completa para retomar el proyecto (y hacer el PR):**
 > [docs/ESTADO-DEL-PROYECTO.md](docs/ESTADO-DEL-PROYECTO.md)
@@ -48,6 +49,11 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
   - 📦 **Acciones en lote**: varias acciones propuestas a la vez, apruebas las que quieras
   - Cada acción muestra una tarjeta **Aprobar / Rechazar**; por defecto solo
     puede tocar tu carpeta de usuario y la del proyecto (ajustable).
+  - 🚀 **Auto-aprobación opcional** (Ajustes → Acceso a tu PC): si la activas,
+    MiClaw ejecuta comandos, escribe archivos y usa herramientas **sin pedir
+    confirmación cada vez** — ideal para programar sin interrupciones.
+- ⚡ **Modo rápido**: con modelos Qwen (Alibaba) puedes desactivar la cadena de
+  pensamiento (Ajustes → Preferencias) para que responda mucho antes.
 
 ### Experiencia premium
 - 👁️ **Visión** — adjunta imágenes o archivos al chat (📎 o arrastrando):

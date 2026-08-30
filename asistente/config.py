@@ -17,6 +17,8 @@ DEFAULT_CONFIG = {
     "proveedor": "gemini",      # proveedor activo
     "modelo": "gemini-2.5-flash",  # modelo activo
     "claves": {},               # {proveedor: api_key}
+    "auto_aprobar": False,      # ejecutar acciones de PC sin pedir confirmación
+    "razonamiento": False,      # thinking del modelo: False = respuestas más rápidas
 }
 
 # Los modelos locales los sirve Ollama (http://localhost:11434).
@@ -79,6 +81,16 @@ def set_model(proveedor, modelo):
     config["proveedor"] = proveedor
     config["modelo"] = modelo
     save_config(config)
+
+
+def auto_aprobar():
+    """¿Ejecutar las acciones de PC (comandos, archivos…) sin pedir confirmación?"""
+    return bool(load_config().get("auto_aprobar", False))
+
+
+def get_razonamiento():
+    """¿Modo razonamiento (thinking) del modelo? False = modo rápido."""
+    return bool(load_config().get("razonamiento", False))
 
 
 def get_modo():

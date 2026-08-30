@@ -491,6 +491,7 @@ body::after {
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 .hud-label { color: var(--ok); font-weight: 700; }
 .hud-sep { color: var(--muted2); }
+.hud-auto { color: var(--warn); font-weight: 700; letter-spacing: .06em; }
 
 /* ---------- adjuntos ---------- */
 .adjuntos { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 22px; }

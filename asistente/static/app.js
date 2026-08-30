@@ -1325,6 +1325,9 @@ async function cargarEstado() {
   pintarRag();
   $("pc-carpeta").value = estado.pc.carpeta_extra || "";
   $("toggle-memoria").checked = estado.memoria_incluida !== false;
+  $("toggle-auto").checked = estado.auto_aprobar === true;
+  $("toggle-razonamiento").checked = estado.razonamiento === true;
+  $("hud-auto").hidden = estado.auto_aprobar !== true;
   // PIN: estado
   const pe = $("pin-estado");
   if (estado.pin_activo) {
@@ -1481,6 +1484,19 @@ document.addEventListener("DOMContentLoaded", () => {
   $("toggle-memoria").onchange = async () => {
     await api("/api/config", { method: "POST", body: JSON.stringify({ memoria_incluida: $("toggle-memoria").checked }) });
     toast($("toggle-memoria").checked ? "Memoria activada" : "Memoria desactivada");
+  };
+  $("toggle-auto").onchange = async () => {
+    await api("/api/config", { method: "POST", body: JSON.stringify({ auto_aprobar: $("toggle-auto").checked }) });
+    $("hud-auto").hidden = !$("toggle-auto").checked;
+    toast($("toggle-auto").checked
+      ? "🚀 Auto-aprobación activada: ejecutaré comandos y herramientas sin pedir permiso"
+      : "🔒 Auto-aprobación desactivada: volveré a pedirte confirmación");
+  };
+  $("toggle-razonamiento").onchange = async () => {
+    await api("/api/config", { method: "POST", body: JSON.stringify({ razonamiento: $("toggle-razonamiento").checked }) });
+    toast($("toggle-razonamiento").checked
+      ? "🧠 Razonamiento profundo activado (más reflexivo, más lento)"
+      : "⚡ Modo rápido activado: respuestas más veloces");
   };
 
   // tareas

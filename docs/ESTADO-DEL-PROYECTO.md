@@ -21,8 +21,9 @@ local, que corre en el ordenador del usuario:
   telemetría, pantalla de arranque futurista, red neuronal animada de fondo,
   multi-dispositivo con PIN.
 
-**Versión actual: 1.4.0** — todo commiteado y empujado al branch
-`arena/01a05486-testing` (ver §9 para el PR).
+**Versión actual: 1.5.0** — añade auto-aprobación opcional (ejecutar acciones
+de PC sin confirmar cada una) y modo rápido para Qwen (sin cadena de
+pensamiento). Ver §9 para el PR.
 
 ---
 
@@ -92,6 +93,7 @@ testing/
 | **v1.2** | Visión (adjuntar imágenes/archivos), tareas autónomas, paleta de comandos (Ctrl+K), HUD de telemetría, red neuronal de fondo, boot futurista, instaladores Windows |
 | **v1.3** | Modos de trabajo (General/Programador/Investigador/Escritor), acciones en lote (casillas), grep/listar carpetas, leer PDF/Word/Excel, tareas recurrentes |
 | **v1.4** | **Diff visual** antes de modificar archivos, **captura de pantalla** con visión, **multi-dispositivo con PIN**, doc de retoma (este archivo) |
+| **v1.5** | **Auto-aprobación opcional** (Ajustes → Acceso a tu PC): ejecuta comandos/archivos/herramientas sin pedir confirmación; **modo rápido** para Qwen (desactiva el `thinking` vía `extra_body: {enable_thinking: false}`); `/api/estado` más veloz (una sola llamada a Ollama) |
 
 ### Detalle de capacidades actuales
 
@@ -111,10 +113,13 @@ código. Modelos recomendados para programar: Qwen3-Coder-Plus (Alibaba), GPT-OS
 - Sandbox de rutas: solo tu carpeta de usuario + la del proyecto (+ carpeta
   extra configurable en Ajustes).
 
-**Seguridad:** cada acción sobre el PC se aprueba manualmente; las tareas
-automáticas corren con `no_pc=True` (prohibido tocar el PC); claves y PIN
-guardados solo en local (PIN con hash); **PIN opcional** que bloquea toda la
-API para accesos desde otros dispositivos (el token se guarda en localStorage
+**Seguridad:** cada acción sobre el PC se aprueba manualmente **por defecto**;
+el usuario puede activar **auto-aprobación** en Ajustes (`config.auto_aprobar()`
+→ `agent.responder_stream(..., auto_aprobar=True)` ejecuta las acciones `@@PC:` 
+directamente y sigue el bucle, emitiendo un evento `tool` por acción); las
+tareas automáticas corren con `no_pc=True` (prohibido tocar el PC); claves y
+PIN guardados solo en local (PIN con hash); **PIN opcional** que bloquea toda
+la API para accesos desde otros dispositivos (el token se guarda en localStorage
 del navegador, expira a los 7 días).
 
 **Streaming:** `/api/chat` devuelve NDJSON de eventos:
@@ -227,7 +232,7 @@ git push origin arena/01a05486-testing   # ya empujado; por si acaso
 
 # Opción A — con GitHub CLI:
 gh pr create --base main --head arena/01a05486-testing \
-  --title "MiClaw: asistente personal de IA gratis y local (v1.4)" \
+  --title "MiClaw: asistente personal de IA gratis y local (v1.5)" \
   --body "Asistente estilo OpenClaw, 100% gratuito... (resumen de funcionalidades)"
 
 # Opción B — web:
