@@ -87,12 +87,16 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 scripts/instalar.sh
 ```
 
-**Windows** (PowerShell o doble clic):
+**Windows** (doble clic, sin comandos):
 
-```powershell
-scripts\instalar.bat     # o doble clic en el archivo
-scripts\arrancar.bat     # doble clic para arrancar (abre el navegador solo)
-```
+1. Doble clic en **`INSTALAR.bat`** (solo la primera vez).
+2. Doble clic en **`ARRANCAR.bat`**. Se abre el navegador en http://localhost:8000.
+
+Si Windows avisa «Windows protegió tu PC», pulsa *Más información* → *Ejecutar de todas formas*.
+
+> Si al instalar veías el error `"cho."` / `"ho" no se reconoce como un comando`:
+> era un fallo de los `.bat` (finales de línea Unix). Ya está corregido;
+> vuelve a descargar/actualizar el proyecto y haz doble clic en `INSTALAR.bat`.
 
 ## Arrancar
 
@@ -128,7 +132,10 @@ asistente/
   conversaciones.py  → historial persistente (data/conversaciones/)
   static/            → interfaz premium (HTML/CSS/JS)
 data/                → tus datos locales (no se sube a git)
-scripts/             → instalar.sh y arrancar.sh
+scripts/             → instalar.sh / arrancar.sh (Linux/macOS)
+                     → instalar.bat / arrancar.bat (Windows)
+INSTALAR.bat         → doble clic en Windows (primera vez)
+ARRANCAR.bat         → doble clic en Windows (abre el navegador)
 ```
 
 ## Notas honestas

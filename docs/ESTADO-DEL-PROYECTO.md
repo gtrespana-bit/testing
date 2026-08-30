@@ -53,7 +53,8 @@ testing/
 ├── .gitignore                       → data/ (datos locales) y artefactos Python
 ├── scripts/
 │   ├── instalar.sh / arrancar.sh    → Linux/macOS (crea .venv, arranca)
-│   └── instalar.bat / arrancar.bat  → Windows (doble clic)
+│   └── instalar.bat / arrancar.bat  → Windows (CRLF; doble clic)
+├── INSTALAR.bat / ARRANCAR.bat      → atajos en la raíz para Windows
 └── asistente/
     ├── main.py          → servidor FastAPI: endpoints, middleware PIN, hilo de tareas
     ├── agent.py         → orquesta conversación + herramientas + permisos + streaming

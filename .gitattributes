@@ -1,0 +1,7 @@
+# Los .bat DEBEN conservarse con CRLF. Si Git los convierte a LF (Unix),
+# CMD de Windows se rompe: el comando echo. se vuelve el error 'cho.' / 'ho'.
+*.bat -text
+*.cmd -text
+
+# Scripts Unix: siempre LF
+*.sh text eol=lf
