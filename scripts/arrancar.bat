@@ -1,21 +1,38 @@
 @echo off
-rem ============================================
-rem  MiClaw — arranque en Windows
-rem  Abre el navegador en http://localhost:8000
-rem ============================================
-chcp 65001 >nul
+setlocal EnableExtensions
+title MiClaw
 cd /d "%~dp0.."
 
-if not exist .venv (
-  echo  [!] No encuentro .venv. Ejecuta primero: scripts\instalar.bat
-  pause
-  exit /b 1
+echo(
+echo  ============================================
+echo    MiClaw - arranque
+echo  ============================================
+echo(
+
+if not exist ".venv\Scripts\python.exe" (
+  echo  Primera vez: voy a instalar las dependencias...
+  echo(
+  call "%~dp0instalar.bat"
+  if not exist ".venv\Scripts\python.exe" (
+    echo(
+    echo  [!] La instalacion no termino bien.
+    echo      Ejecuta INSTALAR.bat y lee el mensaje de error.
+    echo(
+    pause
+    exit /b 1
+  )
 )
 
-call .venv\Scripts\activate.bat
+echo  Abriendo el navegador en http://localhost:8000 ...
+start "" cmd /c "ping 127.0.0.1 -n 3 >nul & start http://localhost:8000"
+echo  MiClaw arrancando. Cierra esta ventana para parar.
+echo(
 
-echo  Abriendo navegador...
-start "" http://localhost:8000
-echo  MiClaw arrancando... (cierra esta ventana para parar)
-python -m asistente.main
+".venv\Scripts\python.exe" -m asistente.main
+set "ERR=%ERRORLEVEL%"
+
+echo(
+if not "%ERR%"=="0" (
+  echo  [!] MiClaw se detuvo con un error.
+)
 pause
