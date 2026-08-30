@@ -192,6 +192,67 @@ class ProviderError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Ayudas para mensajes con IMÁGENES (visión)
+# Formato de mensaje de MiClaw:
+#   {"role": "user", "content": "texto", "imagen": "data:image/png;base64,XXXX"}
+# ---------------------------------------------------------------------------
+def _split_data_uri(data_uri):
+    """Devuelve (mime, base64) de una data URI, o (None, None)."""
+    try:
+        meta, b64 = data_uri.split(",", 1)
+        mime = meta.split(";")[0].split(":", 1)[1]
+        return mime, b64
+    except Exception:
+        return None, None
+
+
+def _build_openai_messages(messages):
+    """Convierte mensajes de MiClaw al formato OpenAI (con imágenes)."""
+    out = []
+    for m in messages:
+        rol = m["role"] if m["role"] != "tool" else "user"
+        if m.get("imagen"):
+            contenido = [{"type": "text", "text": m["content"] or "Describe esta imagen."}]
+            contenido.append({"type": "image_url", "image_url": {"url": m["imagen"]}})
+            out.append({"role": rol, "content": contenido})
+        else:
+            out.append({"role": rol, "content": m["content"]})
+    return out
+
+
+def _build_gemini_contents(messages):
+    """Convierte mensajes de MiClaw al formato de Gemini (con imágenes)."""
+    contents = []
+    for m in messages:
+        if m["role"] == "system":
+            continue
+        parts = []
+        if m.get("imagen"):
+            mime, b64 = _split_data_uri(m["imagen"])
+            if mime and b64:
+                parts.append({"inlineData": {"mimeType": mime, "data": b64}})
+        parts.append({"text": m["content"] or "Describe esta imagen."})
+        contents.append({
+            "role": "user" if m["role"] in ("user", "tool") else "model",
+            "parts": parts,
+        })
+    return contents
+
+
+def _build_ollama_messages(messages):
+    """Convierte mensajes de MiClaw al formato de Ollama (con imágenes)."""
+    out = []
+    for m in messages:
+        msg = {"role": m["role"], "content": m["content"]}
+        if m.get("imagen"):
+            _mime, b64 = _split_data_uri(m["imagen"])
+            if b64:
+                msg["images"] = [b64]
+        out.append(msg)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Ollama (local)
 # ---------------------------------------------------------------------------
 def _ollama_list_models():
@@ -204,7 +265,7 @@ def _ollama_list_models():
 
 
 def ollama_chat(model, messages, max_tokens=None, timeout=TIMEOUT):
-    payload = {"model": model, "messages": messages, "stream": False}
+    payload = {"model": model, "messages": _build_ollama_messages(messages), "stream": False}
     if max_tokens:
         payload["options"] = {"num_predict": max_tokens}
     with httpx.Client(timeout=timeout) as client:
@@ -228,7 +289,7 @@ def ollama_chat(model, messages, max_tokens=None, timeout=TIMEOUT):
 def openai_compatible_chat(provider, base_url, model, messages, api_key,
                            max_tokens=None, timeout=TIMEOUT):
     headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"model": model, "messages": messages}
+    payload = {"model": model, "messages": _build_openai_messages(messages)}
     if max_tokens:
         payload["max_tokens"] = max_tokens
     url = base_url.rstrip("/") + "/chat/completions"
@@ -277,12 +338,7 @@ def openai_compatible_chat(provider, base_url, model, messages, api_key,
 # ---------------------------------------------------------------------------
 def gemini_chat(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
     system_parts = [m["content"] for m in messages if m["role"] == "system"]
-    rest = [m for m in messages if m["role"] != "system"]
-    contents = [
-        {"role": "user" if m["role"] in ("user", "tool") else "model",
-         "parts": [{"text": m["content"]}]}
-        for m in rest
-    ]
+    contents = _build_gemini_contents(messages)
     payload = {"contents": contents}
     if system_parts:
         payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
@@ -363,7 +419,7 @@ def stream_openai_compatible(provider, base_url, model, messages, api_key,
                              max_tokens=None, timeout=TIMEOUT):
     """Versión en streaming (SSE) de las APIs compatibles con OpenAI."""
     headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"model": model, "messages": messages, "stream": True}
+    payload = {"model": model, "messages": _build_openai_messages(messages), "stream": True}
     if max_tokens:
         payload["max_tokens"] = max_tokens
     url = base_url.rstrip("/") + "/chat/completions"
@@ -406,12 +462,7 @@ def stream_openai_compatible(provider, base_url, model, messages, api_key,
 def stream_gemini(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
     """Versión en streaming de Gemini (SSE con streamGenerateContent)."""
     system_parts = [m["content"] for m in messages if m["role"] == "system"]
-    rest = [m for m in messages if m["role"] != "system"]
-    contents = [
-        {"role": "user" if m["role"] in ("user", "tool") else "model",
-         "parts": [{"text": m["content"]}]}
-        for m in rest
-    ]
+    contents = _build_gemini_contents(messages)
     payload = {"contents": contents}
     if system_parts:
         payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
@@ -458,7 +509,7 @@ def stream_gemini(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
 
 def stream_ollama(model, messages, max_tokens=None, timeout=TIMEOUT):
     """Versión en streaming de Ollama (NDJSON)."""
-    payload = {"model": model, "messages": messages, "stream": True}
+    payload = {"model": model, "messages": _build_ollama_messages(messages), "stream": True}
     if max_tokens:
         payload["options"] = {"num_predict": max_tokens}
     try:

@@ -16,6 +16,7 @@ Flujo de cada mensaje del usuario:
 
 import datetime
 import re
+import time
 
 from . import config, pc, providers, tools
 
@@ -40,6 +41,9 @@ REGLAS DE USO:
 - "recordatorio": Úsala cuando el usuario pida que le recuerdes algo en un
   momento concreto. Formato: @@TOOL:recordatorio@@\\n{{qué recordar}} | {{cuándo}}
   (ej: "mañana a las 9", "en 30 minutos", "el 5 de septiembre a las 14:30").
+- "tarea": Úsala cuando el usuario pida programar una acción automática
+  ("programa/agenda una tarea..."). Formato: @@TOOL:tarea@@\\n{{qué debe hacer}} | {{cuándo}}
+  MiClaw la ejecutará solo a la hora indicada (sin acciones de PC).
 - "clima": Úsala para preguntar por el tiempo meteorológico de un lugar.
 - "ver"/"escribir"/"terminal": acciones sobre el PC del usuario. El usuario
   DEBE aprobar cada una desde la interfaz; cuando la apruebe, verás el
@@ -84,13 +88,16 @@ def _extraer_tool(texto):
     return None, None, None
 
 
-def responder(history, provider=None, model=None, tool_result=None, max_tool_rounds=3):
+def responder(history, provider=None, model=None, tool_result=None, max_tool_rounds=3,
+              no_pc=False):
     """
     Devuelve un dict:
       {"tipo": "respuesta", "texto": ...}  → respuesta final
       {"tipo": "permiso", "accion": ..., "datos": ..., "texto": ...}  → pide aprobación
     Si `tool_result` no es None, se inyecta como mensaje "tool" antes del bucle
     (es el resultado de una acción de PC que el usuario ya aprobó).
+    Si `no_pc` es True (tareas automáticas), las acciones de PC se saltan
+    automáticamente sin pedir permiso.
     """
     provider = provider or config.get_provider()
     model = model or config.get_model()
@@ -107,6 +114,14 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
             return {"tipo": "respuesta", "texto": texto.strip()}
 
         if tipo == "pc":
+            if no_pc:
+                messages.append({"role": "assistant", "content": texto})
+                messages.append({
+                    "role": "tool",
+                    "content": ("Acción de PC no permitida en modo automático. "
+                                "No la ejecutes y responde con lo que puedas."),
+                })
+                continue
             return {
                 "tipo": "permiso",
                 "accion": tid,
@@ -143,6 +158,7 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
     if tool_result is not None:
         messages.append({"role": "tool", "content": str(tool_result)})
 
+    t0 = time.time()
     for _ in range(max_tool_rounds + 1):
         buffer = []
         try:
@@ -164,7 +180,11 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
         tipo, tid, arg = _extraer_tool(texto)
 
         if tipo is None:
-            yield {"tipo": "done"}
+            yield {
+                "tipo": "done",
+                "segundos": round(time.time() - t0, 2),
+                "tokens": max(1, len(texto) // 4),
+            }
             return
 
         if tipo == "pc":

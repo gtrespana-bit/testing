@@ -4,8 +4,9 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.1 — nivel Dios**: streaming real, voz (leer + dictado), modo claro/oscuro,
-> calculadora, recordatorios con avisos y clima. Todo gratis.
+> **v1.2 — modo superinteligencia**: visión (imágenes/archivos), tareas
+> autónomas, paleta de comandos, HUD de telemetría, fondo de red neuronal,
+> pantalla de arranque, instalador de Windows.
 
 ## ✨ Qué hace
 
@@ -37,16 +38,22 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
     puede tocar tu carpeta de usuario y la del proyecto (ajustable).
 
 ### Experiencia premium
+- 👁️ **Visión** — adjunta imágenes o archivos al chat (📎 o arrastrando):
+  MiClaw los ve (Gemini/Qwen-VL/Ollama multimodal) o lee su texto.
+- 🤖 **Tareas autónomas** — programa acciones que MiClaw ejecuta SOLO a la hora
+  indicada («programa una tarea para mañana a las 9 que busque las noticias»).
+  Resultados visibles en Memoria → Tareas, con notificación.
+- ⌘ **Paleta de comandos** — `Ctrl+K`: nueva conversación, cambiar proveedor,
+  tema, exportar, probar conexión… desde un solo buscador.
+- 📡 **HUD de telemetría** — barra superior con estado del núcleo y, tras cada
+  respuesta, tiempo de síntesis y tokens estimados.
+- 🧬 **Red neuronal animada** de fondo + pantalla de arranque estilo IA despertando.
 - ⚡ **Streaming real** — las respuestas aparecen palabra a palabra, en vivo.
-- 🎤 **Voz** — MiClaw lee sus respuestas en voz alta (botón 🔊 en cada mensaje,
-  opción de leer automáticamente, velocidad ajustable) y tú puedes **dictar**
-  con el micrófono 🎤 del chat (Web Speech, gratis).
-- ☀️🌙 **Modo claro y oscuro** con un clic (se recuerda tu elección).
-- 💾 **Conversaciones guardadas** — historial lateral con búsqueda, se retoma donde lo dejaste.
-- 📝 **Markdown** — respuestas con formato (código con botón «Copiar», tablas, listas…).
-- ⚡ **Botón «Probar conexión»** por proveedor (verifica tu clave en 1 clic).
-- ⬇️ **Exportar** cualquier conversación a Markdown.
-- ↻ **Regenerar** respuestas · ⧉ copiar mensajes · atajos (`Ctrl+N`, `Ctrl+,`).
+- 🎤 **Voz** — lee respuestas en voz alta (🔊, auto-read, velocidad) y dictado 🎤.
+- ☀️🌙 **Modo claro y oscuro** con un clic.
+- 💾 **Conversaciones guardadas** con historial lateral y búsqueda.
+- 📝 **Markdown** con bloques de código copiables, tablas y listas.
+- ⚡ **Botón «Probar conexión»** · ⬇️ exportar · ↻ regenerar · atajos (`Ctrl+N`, `Ctrl+,`, `Ctrl+K`).
 
 ## Requisitos
 
@@ -61,12 +68,11 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 scripts/instalar.sh
 ```
 
-**Windows** (PowerShell):
+**Windows** (PowerShell o doble clic):
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+scripts\instalar.bat     # o doble clic en el archivo
+scripts\arrancar.bat     # doble clic para arrancar (abre el navegador solo)
 ```
 
 ## Arrancar

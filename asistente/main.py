@@ -9,6 +9,8 @@ Todo corre en tu ordenador: el servidor es local y las claves nunca se suben.
 import json
 import os
 import sys
+import threading
+import time
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
@@ -18,13 +20,13 @@ from pydantic import BaseModel
 # Permitir ejecutar "python -m asistente.main" desde la raíz del repo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from . import agent, config, conversaciones, pc, providers, recordatorios  # noqa: E402
+from . import agent, config, conversaciones, pc, providers, recordatorios, tareas  # noqa: E402
 from .memory import borrar as memory_borrar  # noqa: E402
 from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.1.0")
+app = FastAPI(title="MiClaw", version="1.2.0")
 
 
 # ---------------------------------------------------------------- modelos
@@ -75,6 +77,11 @@ class ConvCrearBody(BaseModel):
 class ConvGuardarBody(BaseModel):
     titulo: str | None = None
     messages: list | None = None
+
+
+class TareaBody(BaseModel):
+    prompt: str
+    cuando: str
 
 
 # ---------------------------------------------------------------- API
@@ -238,6 +245,51 @@ def recordatorios_vencidos():
 @app.delete("/api/recordatorios/{rid}")
 def recordatorios_borrar(rid: str):
     return {"ok": recordatorios.borrar(rid)}
+
+
+# ---------------------------------------------------------------- tareas automáticas
+@app.get("/api/tareas")
+def tareas_listar():
+    return {"tareas": tareas.listar()}
+
+
+@app.post("/api/tareas")
+def tareas_crear(body: TareaBody):
+    tid, msg = tareas.crear(body.prompt, body.cuando)
+    return {"id": tid, "msg": msg, "ok": tid is not None}
+
+
+@app.delete("/api/tareas/{tid}")
+def tareas_borrar(tid: str):
+    return {"ok": tareas.borrar(tid)}
+
+
+def _bucle_tareas():
+    """Ejecuta las tareas programadas cuando llega su hora (hilo en segundo plano)."""
+    while True:
+        time.sleep(10)
+        try:
+            for t in tareas.pendientes():
+                tareas.marcar(t["id"], "ejecutando")
+                try:
+                    res = agent.responder(
+                        [{"role": "user", "content": t["prompt"]}],
+                        no_pc=True,
+                    )
+                    if res.get("tipo") == "respuesta":
+                        tareas.marcar(t["id"], "hecho", resultado=res.get("texto", ""))
+                    else:
+                        tareas.marcar(t["id"], "hecho",
+                                      resultado="(requería aprobación manual; se omitió en modo automático)")
+                except providers.ProviderError as e:
+                    tareas.marcar(t["id"], "error", resultado=str(e))
+                except Exception as e:
+                    tareas.marcar(t["id"], "error", resultado=f"Error interno: {e}")
+        except Exception:
+            pass
+
+
+threading.Thread(target=_bucle_tareas, daemon=True).start()
 
 
 # ---------------------------------------------------------------- memoria

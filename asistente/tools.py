@@ -91,6 +91,15 @@ TOOLS = [
         "formato": '@@TOOL:recordatorio@@\n{qué recordar} | {cuándo}',
     },
     {
+        "id": "tarea",
+        "nombre": "Programar tarea automática",
+        "descripcion": ("Programa una acción que MiClaw ejecutará SOLO a la hora "
+                        "indicada (buscar, resumir, guardar archivos...). "
+                        "Úsala cuando el usuario pida 'programa/agenda una tarea'."),
+        "tipo": "auto",
+        "formato": '@@TOOL:tarea@@\n{qué debe hacer} | {cuándo}',
+    },
+    {
         "id": "clima",
         "nombre": "Clima del tiempo",
         "descripcion": ("Consulta el tiempo meteorológico actual de una ciudad "
@@ -206,6 +215,17 @@ def _crear_recordatorio(arg):
                 "'cumple de Luis | el 5 de septiembre a las 14:00'.")
     texto, cuando = arg.rsplit("|", 1)
     _rid, msg = recordatorios.crear(texto, cuando)
+    return msg
+
+
+def _crear_tarea(arg):
+    from . import tareas
+    if "|" not in arg:
+        return ("Formato: qué hacer | cuándo — ej: "
+                "'busca las noticias de tecnología | mañana a las 9', "
+                "'resume mi carpeta de proyectos | en 1 hora'.")
+    prompt, cuando = arg.rsplit("|", 1)
+    _tid, msg = tareas.crear(prompt, cuando)
     return msg
 
 

@@ -1,5 +1,5 @@
 /* ============================================================
-   MiClaw — frontend premium (v1.1: streaming, voz, temas, más)
+   MiClaw — frontend v1.2 (modo superinteligencia)
    ============================================================ */
 "use strict";
 
@@ -10,6 +10,8 @@ let historial = [];
 let chatId = null;          // id de la conversación actual (null = nueva sin guardar)
 let pendiente = null;       // plan de acción sobre el PC esperando aprobación
 let ocupado = false;        // hay una petición en curso
+let adjuntosPendientes = []; // adjuntos del mensaje en curso
+let tareasVistas = new Set(); // ids de tareas ya notificadas
 
 /* ---------------- utilidades ---------------- */
 
@@ -26,7 +28,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove("show"), 3200);
+  t._timer = setTimeout(() => t.classList.remove("show"), 3400);
 }
 
 function esc(s) {
@@ -59,6 +61,89 @@ let _ultimoScroll = 0;
 function scrollThrottled() {
   const t = Date.now();
   if (t - _ultimoScroll > 80) { _ultimoScroll = t; scrollBottom(); }
+}
+
+/* ---------------- PANTALLA DE ARRANQUE ---------------- */
+
+function arrancarBoot() {
+  const boot = $("boot");
+  if (!boot) return;
+  const logs = [
+    ["Inicializando núcleo neuronal…", ""],
+    ["Cargando matrices de proveedores…", ""],
+    ["[OK] 11 proveedores gratuitos detectados", "ok"],
+    ["Sincronizando memoria local…", ""],
+    "[OK] Cifrado local activado",
+    ["Conectando herramientas: web · PC · clima · tareas…", ""],
+    ["[OK] Sistema operativo MiClaw listo", "ok"],
+  ];
+  const fill = $("boot-fill");
+  const cont = $("boot-logs");
+  let i = 0;
+  const paso = () => {
+    if (i >= logs.length) {
+      setTimeout(() => boot.classList.add("off"), 380);
+      setTimeout(() => boot.remove(), 950);
+      return;
+    }
+    const [txt, cls] = logs[i];
+    const div = document.createElement("div");
+    if (cls) div.className = cls;
+    div.textContent = txt;
+    cont.appendChild(div);
+    fill.style.width = (((i + 1) / logs.length) * 100) + "%";
+    i++;
+    setTimeout(paso, 250);
+  };
+  boot.onclick = () => { boot.classList.add("off"); setTimeout(() => boot.remove(), 400); };
+  paso();
+}
+
+/* ---------------- RED NEURONAL DE FONDO ---------------- */
+
+function iniciarRedNeuronal() {
+  const canvas = $("neural");
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext("2d");
+  let W, H;
+  const N = 48;
+  const nodos = [];
+  const resize = () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; };
+  resize();
+  addEventListener("resize", resize);
+  for (let i = 0; i < N; i++) {
+    nodos.push({
+      x: Math.random() * innerWidth, y: Math.random() * innerHeight,
+      vx: (Math.random() - .5) * .38, vy: (Math.random() - .5) * .38,
+      r: Math.random() * 1.7 + .7,
+    });
+  }
+  let last = performance.now();
+  const frame = (now) => {
+    const dt = Math.min((now - last) / 16.7, 3);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    for (const n of nodos) {
+      n.x += n.vx * dt; n.y += n.vy * dt;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+    }
+    for (let i = 0; i < nodos.length; i++) {
+      for (let j = i + 1; j < nodos.length; j++) {
+        const a = nodos[i], b = nodos[j];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d < 135) {
+          ctx.strokeStyle = "rgba(124,92,255," + (0.15 * (1 - d / 135)).toFixed(3) + ")";
+          ctx.lineWidth = .6;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    ctx.fillStyle = "rgba(124,92,255,.5)";
+    for (const n of nodos) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill(); }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 /* ---------------- markdown (renderizador ligero y seguro) ---------------- */
@@ -199,19 +284,29 @@ function crearFilaStream() {
   return { row, bubble: row.querySelector(".msg-bubble") };
 }
 
-function mostrarPensando(texto) {
+function mostrarPensando() {
   const cont = $("messages");
   const row = document.createElement("div");
   row.className = "msg-row assistant";
+  const frases = [
+    "Procesando sinapsis…", "Consultando matriz de conocimiento…",
+    "Analizando contexto…", "Ejecutando herramientas neuronales…",
+    "Sintetizando respuesta…",
+  ];
   row.innerHTML = `
     <div class="msg-avatar">🦞</div>
     <div class="msg-body"><div class="thinking">
       <span class="dots"><span></span><span></span><span></span></span>
-      <span class="thinking-txt">${esc(texto)}</span>
+      <span class="thinking-txt">${frases[0]}</span>
     </div></div>`;
   cont.appendChild(row);
   scrollBottom();
-  return row;
+  let fi = 0;
+  const rotador = setInterval(() => {
+    const f = row.querySelector(".thinking-txt");
+    if (f) f.textContent = frases[++fi % frases.length];
+  }, 2600);
+  return { row, rotador };
 }
 
 function tarjetaPermiso(plan) {
@@ -244,6 +339,50 @@ function tarjetaPermiso(plan) {
   cont.appendChild(row);
   scrollBottom();
   return row;
+}
+
+/* ---------------- ADJUNTOS ---------------- */
+
+function leerAdjunto(file) {
+  return new Promise((resolve) => {
+    const esImg = file.type.startsWith("image/");
+    const esTexto = /\.(txt|md|py|json|csv|log|js|html|css|ts|tsx|jsx)$/i.test(file.name) || file.type.startsWith("text/");
+    const lector = new FileReader();
+    if (esImg) {
+      lector.onload = () => resolve({ nombre: file.name, tipo: "imagen", data: lector.result });
+      lector.readAsDataURL(file);
+    } else if (esTexto && file.size < 300000) {
+      lector.onload = () => resolve({ nombre: file.name, tipo: "texto", data: lector.result });
+      lector.readAsText(file);
+    } else {
+      resolve({ nombre: file.name, tipo: "otro", data: "" });
+    }
+  });
+}
+
+async function manejarArchivos(files) {
+  for (const f of files) {
+    const a = await leerAdjunto(f);
+    if (a.tipo === "otro") {
+      toast("«" + a.nombre + "» no se puede adjuntar (solo imágenes o texto <300KB)");
+      continue;
+    }
+    adjuntosPendientes.push(a);
+  }
+  pintarAdjuntos();
+}
+
+function pintarAdjuntos() {
+  const cont = $("adjuntos");
+  cont.innerHTML = "";
+  adjuntosPendientes.forEach((a, idx) => {
+    const chip = document.createElement("div");
+    chip.className = "adjunto-chip";
+    chip.innerHTML = (a.tipo === "imagen" ? `<img src="${a.data}" alt="">` : `<span>📄</span>`) +
+      `<span class="ad-nombre">${esc(a.nombre)}</span><span class="ad-x" data-i="${idx}">✕</span>`;
+    chip.querySelector(".ad-x").onclick = () => { adjuntosPendientes.splice(idx, 1); pintarAdjuntos(); };
+    cont.appendChild(chip);
+  });
 }
 
 /* ---------------- conversaciones ---------------- */
@@ -336,12 +475,26 @@ async function cargarConversacion(id) {
 async function enviar() {
   const input = $("input");
   const texto = input.value.trim();
-  if (!texto || ocupado) return;
+  if ((!texto && !adjuntosPendientes.length) || ocupado) return;
 
   $("welcome").style.display = "none";
-  addMarkdown("user", texto);
-  historial.push({ role: "user", content: texto });
-  pendiente = null; // un mensaje nuevo resetea cualquier flujo de herramienta anterior
+
+  // adjuntos → mensaje
+  let contenido = texto;
+  let imagen = null;
+  for (const a of adjuntosPendientes) {
+    if (a.tipo === "imagen" && !imagen) imagen = a.data;
+    else if (a.tipo === "texto") contenido += `\n\n[Archivo adjunto: ${a.nombre}]\n${a.data}`;
+  }
+  if (imagen && !contenido.trim()) contenido = "Describe esta imagen.";
+
+  const msg = { role: "user", content: contenido };
+  if (imagen) msg.imagen = imagen;
+
+  addMarkdown("user", contenido + (imagen ? "\n\n🖼️ [imagen adjunta]" : ""));
+  historial.push(msg);
+  adjuntosPendientes = [];
+  pintarAdjuntos();
   input.value = "";
   autosize(input);
   await crearSiHaceFalta();
@@ -353,23 +506,15 @@ async function pedirRespuesta() {
   ocupado = true;
   $("btn-send").disabled = true;
 
-  const prov = estado?.proveedores?.[estado.proveedor];
-  const pensando = mostrarPensando(`Conectando con ${prov?.nombre || estado?.proveedor || "…"}`);
-  const rotador = setInterval(() => {
-    const f = pensando.querySelector(".thinking-txt");
-    if (f) f.textContent = ["Pensando…", "Consultando…", "Casi listo…"][Math.floor(Math.random() * 3)];
-  }, 4200);
+  const pensando = mostrarPensando();
+  const quitarPensando = () => {
+    if (document.body.contains(pensando.row)) pensando.row.remove();
+    clearInterval(pensando.rotador);
+  };
 
-  let fila = null;          // burbuja provisional del asistente (streaming)
+  let fila = null;
   let acumulado = "";
   let finalizado = false;
-  let pensandoVivo = true;
-
-  const quitarPensando = () => {
-    if (pensandoVivo && document.body.contains(pensando)) pensando.remove();
-    clearInterval(rotador);
-    pensandoVivo = false;
-  };
 
   try {
     const body = { messages: historial };
@@ -448,6 +593,9 @@ async function pedirRespuesta() {
             const time = document.createElement("div");
             time.className = "msg-time";
             time.textContent = ahora();
+            const tele = document.createElement("div");
+            tele.className = "msg-tele";
+            tele.innerHTML = `◉ sintetizada en <span class="t-ok">${ev.segundos ?? "?"}s</span> · ≈${ev.tokens ?? "?"} tokens`;
             const acc = document.createElement("div");
             acc.className = "msg-actions";
             acc.innerHTML = `
@@ -455,9 +603,11 @@ async function pedirRespuesta() {
               <button class="msg-act" data-act="regen">↻ Regenerar</button>
               <button class="msg-act" data-act="speak">🔊 Leer</button>`;
             body.appendChild(time);
+            body.appendChild(tele);
             body.appendChild(acc);
             historial.push({ role: "assistant", content: textoFinal });
             guardarConversacion();
+            $("hud-tele").textContent = `última síntesis: ${ev.segundos ?? "?"}s · ≈${ev.tokens ?? "?"} tok`;
             if ($("toggle-voz").checked && textoFinal.trim()) leerTexto(textoFinal);
           }
           fila = null;
@@ -562,7 +712,6 @@ function cargarVoces() {
   sel.onchange = () => localStorage.setItem("miclaw-voz-uri", sel.value);
 }
 
-/* dictado por micrófono */
 let reconocedor = null;
 
 function dictar() {
@@ -601,6 +750,71 @@ function aplicarTema(t) {
   document.documentElement.dataset.theme = t;
   localStorage.setItem("miclaw-tema", t);
   $("btn-tema").textContent = t === "dark" ? "☀️ Tema claro" : "🌙 Tema oscuro";
+}
+
+function toggleTema() {
+  aplicarTema(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+/* ---------------- PALETA DE COMANDOS ---------------- */
+
+function abrirPaleta() {
+  const pal = $("paleta");
+  pal.classList.remove("hidden");
+  const input = $("paleta-input");
+  input.value = "";
+  pintarPaleta("");
+  input.focus();
+}
+
+function cerrarPaleta() {
+  $("paleta").classList.add("hidden");
+}
+
+function accionesPaleta() {
+  const acciones = [
+    { icon: "✚", label: "Nueva conversación", kbd: "Ctrl+N", fn: () => nuevaConversacion() },
+    { icon: "⬇", label: "Exportar conversación", fn: () => exportarConversacion() },
+    { icon: "◐", label: "Cambiar tema claro/oscuro", fn: toggleTema },
+    { icon: "⚙️", label: "Ir a Ajustes", kbd: "Ctrl+,", fn: () => switchView("ajustes") },
+    { icon: "🧠", label: "Ir a Memoria", fn: () => switchView("memoria") },
+    { icon: "⚡", label: "Probar conexión del proveedor", fn: probarConexion },
+    { icon: "🦞", label: "Ir al Chat", fn: () => switchView("chat") },
+  ];
+  if (estado) {
+    for (const [pid, info] of Object.entries(estado.proveedores)) {
+      acciones.push({
+        icon: "➤", label: "Usar proveedor: " + info.nombre,
+        fn: () => seleccionarProveedor(pid),
+      });
+    }
+  }
+  return acciones;
+}
+
+function pintarPaleta(q) {
+  const cont = $("paleta-items");
+  const lista = accionesPaleta().filter((a) => a.label.toLowerCase().includes(q.toLowerCase()));
+  if (!lista.length) { cont.innerHTML = `<div class="paleta-empty">Sin resultados</div>`; return; }
+  cont.innerHTML = "";
+  lista.forEach((a, idx) => {
+    const item = document.createElement("div");
+    item.className = "paleta-item" + (idx === 0 ? " sel" : "");
+    item.innerHTML = `<span>${a.icon}</span><span>${esc(a.label)}</span>${a.kbd ? `<span class="pi-kbd">${esc(a.kbd)}</span>` : ""}`;
+    item.onclick = () => { cerrarPaleta(); a.fn(); };
+    item.onmouseenter = () => { cont.querySelectorAll(".paleta-item").forEach((x) => x.classList.remove("sel")); item.classList.add("sel"); };
+    cont.appendChild(item);
+  });
+}
+
+function paletaNavegar(delta) {
+  const items = [...$("paleta-items").querySelectorAll(".paleta-item")];
+  if (!items.length) return;
+  let idx = items.findIndex((x) => x.classList.contains("sel"));
+  idx = (idx + delta + items.length) % items.length;
+  items.forEach((x) => x.classList.remove("sel"));
+  items[idx].classList.add("sel");
+  items[idx].scrollIntoView({ block: "nearest" });
 }
 
 /* ---------------- recordatorios ---------------- */
@@ -660,6 +874,53 @@ function iniciarVigilanciaRecordatorios() {
       if (v.length) cargarRecordatorios();
     } catch { /* sin servidor */ }
   }, 15000);
+}
+
+/* ---------------- TAREAS AUTÓNOMAS ---------------- */
+
+async function cargarTareas() {
+  try {
+    const res = await api("/api/tareas");
+    const lista = res.tareas || [];
+    pintarTareas(lista);
+    for (const t of lista) {
+      if ((t.estado === "hecho" || t.estado === "error") && !tareasVistas.has(t.id)) {
+        tareasVistas.add(t.id);
+        if (t.estado === "hecho") notificar("🤖 Tarea completada", t.prompt);
+        else notificar("⚠️ Tarea con error", t.prompt);
+      }
+    }
+  } catch { /* servidor apagado */ }
+}
+
+function pintarTareas(lista) {
+  const cont = $("tareas-list");
+  cont.innerHTML = "";
+  if (!lista.length) {
+    cont.innerHTML = `<div class="empty-state">Sin tareas programadas.<br>Pídele: «programa una tarea para mañana a las 9 que busque las noticias»</div>`;
+    return;
+  }
+  const ETI = { pendiente: "⏳ pendiente", ejecutando: "⚙️ ejecutando", hecho: "✔ hecha", error: "✖ error" };
+  for (const t of lista) {
+    const card = document.createElement("div");
+    card.className = "apunte-card tarea-card";
+    card.innerHTML = `
+      <div class="ap-icon">🤖</div>
+      <div class="ap-body">
+        <div class="ap-contenido">
+          ${esc(t.prompt)}
+          <span class="tarea-estado ${esc(t.estado)}">${ETI[t.estado] || t.estado}</span>
+        </div>
+        <div class="ap-fecha">⏱ ${esc(t.cuando)}</div>
+        ${t.resultado ? `<div class="tarea-resultado">${esc(t.resultado.slice(0, 400))}</div>` : ""}
+      </div>
+      <button class="ap-del" data-tid="${esc(t.id)}">✕</button>`;
+    card.querySelector(".ap-del").onclick = async () => {
+      await api("/api/tareas/" + t.id, { method: "DELETE" });
+      cargarTareas();
+    };
+    cont.appendChild(card);
+  }
 }
 
 /* ---------------- ajustes ---------------- */
@@ -755,6 +1016,7 @@ function pintarCajaProveedor() {
   $("provider-dot").className = "dot" + (activo ? " on" : "");
   $("chip-proveedor").textContent = nombre;
   $("welcome-provider").textContent = nombre;
+  $("hud-prov").textContent = estado.proveedor + " · " + (estado.modelo || "?");
   $("card-custom").style.display = estado.proveedor === "custom" ? "" : "none";
 }
 
@@ -849,10 +1111,10 @@ function exportarConversacion() {
 
 function switchView(vista) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".nav-btn[data-view]").forEach((b) => b.classList.remove("active"));
   $("view-" + vista).classList.add("active");
   document.querySelector(`.nav-btn[data-view="${vista}"]`)?.classList.add("active");
-  if (vista === "memoria") { cargarMemoria(); cargarRecordatorios(); }
+  if (vista === "memoria") { cargarMemoria(); cargarRecordatorios(); cargarTareas(); }
   if (vista === "ajustes") cargarEstado();
 }
 
@@ -877,10 +1139,13 @@ function autosize(ta) {
 /* ---------------- init ---------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // arranque futurista
+  arrancarBoot();
+  iniciarRedNeuronal();
+
   // tema
   aplicarTema(localStorage.getItem("miclaw-tema") || "dark");
-  $("btn-tema").onclick = () =>
-    aplicarTema(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  $("btn-tema").onclick = toggleTema;
 
   // navegación
   document.querySelectorAll(".nav-btn[data-view]").forEach((b) => {
@@ -902,6 +1167,20 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-exportar").onclick = exportarConversacion;
   $("btn-mic").onclick = dictar;
 
+  // adjuntos
+  $("btn-adjunto").onclick = () => $("file-input").click();
+  $("file-input").onchange = (e) => { manejarArchivos(e.target.files); e.target.value = ""; };
+  ["messages", "welcome"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("dragover", (e) => { e.preventDefault(); el.style.outline = "2px dashed rgba(124,92,255,.6)"; el.style.outlineOffset = "-8px"; });
+    el.addEventListener("dragleave", () => { el.style.outline = ""; });
+    el.addEventListener("drop", (e) => {
+      e.preventDefault(); el.style.outline = "";
+      if (e.dataTransfer.files.length) manejarArchivos(e.dataTransfer.files);
+    });
+  });
+
   // chips de bienvenida
   document.querySelectorAll(".chip-sug").forEach((ch) => {
     ch.onclick = () => {
@@ -910,11 +1189,24 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   });
 
+  // paleta de comandos
+  $("btn-paleta").onclick = abrirPaleta;
+  $("paleta").addEventListener("click", (e) => { if (e.target.id === "paleta") cerrarPaleta(); });
+  $("paleta-input").addEventListener("input", (e) => pintarPaleta(e.target.value));
+  $("paleta-input").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cerrarPaleta();
+    if (e.key === "ArrowDown") { e.preventDefault(); paletaNavegar(1); }
+    if (e.key === "ArrowUp") { e.preventDefault(); paletaNavegar(-1); }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const sel = $("paleta-items").querySelector(".paleta-item.sel");
+      if (sel) { cerrarPaleta(); sel.click(); }
+    }
+  });
+
   // voz
   cargarVoces();
-  if ("speechSynthesis" in window) {
-    speechSynthesis.onvoiceschanged = cargarVoces;
-  }
+  if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = cargarVoces;
   $("toggle-voz").checked = localStorage.getItem("miclaw-voz-auto") === "1";
   $("toggle-voz").onchange = () =>
     localStorage.setItem("miclaw-voz-auto", $("toggle-voz").checked ? "1" : "0");
@@ -924,7 +1216,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("miclaw-voz-rate", $("rango-voz").value);
     $("voz-vel-label").textContent = parseFloat($("rango-voz").value).toFixed(2) + "×";
   };
-  $("btn-probar-voz").onclick = () => leerTexto("Hola, soy MiClaw. ¡Listo para ayudarte!");
+  $("btn-probar-voz").onclick = () => leerTexto("Hola, soy MiClaw. Superinteligencia local activada.");
 
   // ajustes
   $("btn-probar").onclick = probarConexion;
@@ -943,6 +1235,21 @@ document.addEventListener("DOMContentLoaded", () => {
     toast($("toggle-memoria").checked ? "Memoria activada" : "Memoria desactivada");
   };
 
+  // tareas
+  $("btn-tarea-crear").onclick = async () => {
+    const prompt = $("tarea-prompt").value.trim();
+    const cuando = $("tarea-cuando").value.trim();
+    if (!prompt || !cuando) { toast("Rellena qué hacer y cuándo"); return; }
+    const r = await api("/api/tareas", { method: "POST", body: JSON.stringify({ prompt, cuando }) });
+    if (r.ok) {
+      toast(r.msg);
+      $("tarea-prompt").value = ""; $("tarea-cuando").value = "";
+      cargarTareas();
+    } else {
+      toast(r.msg);
+    }
+  };
+
   // memoria
   $("btn-borrar-memoria").onclick = async () => {
     if (!confirm("¿Seguro que quieres borrar TODA la memoria?")) return;
@@ -955,13 +1262,16 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") { e.preventDefault(); nuevaConversacion(); }
     if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); switchView("ajustes"); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); abrirPaleta(); }
   });
 
-  // recordatorios
+  // vigilancia: recordatorios + tareas
   iniciarVigilanciaRecordatorios();
+  setInterval(cargarTareas, 15000);
 
   // arranque
   cargarEstado();
   cargarListaConversaciones();
-  $("input").focus();
+  cargarTareas();
+  setTimeout(() => $("input").focus(), 900);
 });

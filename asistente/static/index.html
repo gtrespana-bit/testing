@@ -3,11 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MiClaw — Tu asistente de IA</title>
+<title>MiClaw — Superinteligencia local</title>
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <div class="bg-orbs" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+<canvas id="neural" aria-hidden="true"></canvas>
+
+<!-- ============ PANTALLA DE ARRANQUE (IA despertando) ============ -->
+<div id="boot" class="boot">
+  <div class="boot-core">🦞</div>
+  <h1 class="boot-title">MiClaw</h1>
+  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.2</div>
+  <div class="boot-bar"><div class="boot-bar-fill" id="boot-fill"></div></div>
+  <div class="boot-logs" id="boot-logs"></div>
+  <div class="boot-skip" id="boot-skip">tocar para saltar</div>
+</div>
 
 <div class="app">
   <!-- ================= SIDEBAR ================= -->
@@ -16,7 +27,7 @@
       <div class="brand-logo">🦞</div>
       <div class="brand-text">
         <h1>MiClaw</h1>
-        <span class="version">v1.0 · premium</span>
+        <span class="version">v1.2 · núcleo neuronal</span>
       </div>
     </div>
 
@@ -33,6 +44,7 @@
       <button class="nav-btn" data-view="ajustes">⚙️ Ajustes</button>
       <button class="nav-btn" data-view="memoria">🧠 Memoria</button>
       <button class="nav-btn" id="btn-tema">☀️ Tema claro</button>
+      <button class="nav-btn" id="btn-paleta" title="Paleta de comandos (Ctrl+K)">⌘ Comandos</button>
 
       <div class="provider-mini" id="provider-box" title="Proveedor activo">
         <span class="dot" id="provider-dot"></span>
@@ -60,24 +72,39 @@
         </div>
       </header>
 
+      <div class="hud" id="hud">
+        <span class="hud-dot" id="hud-dot"></span>
+        <span class="hud-label">NÚCLEO ACTIVO</span>
+        <span class="hud-sep">·</span>
+        <span id="hud-prov">—</span>
+        <span class="hud-sep">·</span>
+        <span id="hud-tele">sin telemetría</span>
+      </div>
+
       <div id="welcome" class="welcome">
         <div class="welcome-logo">🦞</div>
+        <div class="welcome-tag">INTERFAZ NEURONAL · CONEXIÓN ESTABLE</div>
         <h1>Hola, soy MiClaw</h1>
-        <p>Tu asistente personal: chateo contigo, busco en internet, <br>guardo tus notas y trabajo con tu PC — siempre con tu permiso.</p>
+        <p>Tu superinteligencia local: chateo, veo imágenes, busco en la web,<br>
+        guardo recuerdos, trabajo con tu PC y ejecuto tareas solas — siempre con tu permiso.</p>
         <div class="chips">
           <button class="chip-sug" data-s="busca en internet las noticias de tecnología de hoy">🔍 Busca noticias de hoy</button>
           <button class="chip-sug" data-s="recuerda que mi color favorito es el verde">🧠 Guárdame un dato</button>
           <button class="chip-sug" data-s="lee el archivo README.md del proyecto y resúmelo">📄 Resume mi archivo</button>
           <button class="chip-sug" data-s="¿cuánto espacio libre tiene mi disco?">💻 Mira mi disco</button>
+          <button class="chip-sug" data-s="calcula la raíz cuadrada de 2025 y multiplícala por pi">🧮 Calcula algo</button>
         </div>
-        <p class="welcome-hint">Proveedor actual: <span id="welcome-provider">—</span> · cámbialo en <button class="linklike" id="ir-ajustes">Ajustes</button></p>
+        <p class="welcome-hint">Núcleo: <span id="welcome-provider">—</span> · config en <button class="linklike" id="ir-ajustes">Ajustes</button> · ⌘K para comandos</p>
       </div>
 
       <div id="messages" class="messages"></div>
 
+      <div id="adjuntos" class="adjuntos"></div>
       <form id="chat-form" class="composer" autocomplete="off">
-        <textarea id="input" rows="1" placeholder="Escribe tu mensaje…  (Enter enviar · Shift+Enter salto)"></textarea>
-        <button type="button" class="mic-btn" id="btn-mic" title="Dictar por voz (micrófono)">🎤</button>
+        <textarea id="input" rows="1" placeholder="Transmite tu mensaje…  (Enter enviar · Shift+Enter salto)"></textarea>
+        <button type="button" class="mic-btn" id="btn-mic" title="Dictar por voz">🎤</button>
+        <button type="button" class="clip-btn" id="btn-adjunto" title="Adjuntar imagen o archivo">📎</button>
+        <input type="file" id="file-input" hidden multiple accept="image/*,.txt,.md,.py,.json,.csv,.log,.js,.html,.css,.ts,.tsx,.jsx">
         <button type="submit" id="btn-send" title="Enviar">➤</button>
       </form>
     </section>
@@ -135,7 +162,7 @@
 
       <div class="card">
         <h3>6 · Voz 🎤🔊</h3>
-        <p class="hint">MiClaw puede leer sus respuestas en voz alta y tú puedes dictar con el micrófono del chat. Todo gratis y local en tu navegador (Web Speech).</p>
+        <p class="hint">MiClaw puede leer sus respuestas en voz alta y tú puedes dictar con el micrófono del chat. Gratis y local (Web Speech).</p>
         <label class="toggle-row">
           <input type="checkbox" id="toggle-voz">
           <span>Leer las respuestas en voz alta automáticamente</span>
@@ -158,10 +185,27 @@
       <button class="danger-btn" id="btn-borrar-memoria">🗑 Borrar toda la memoria</button>
 
       <h3 style="margin-top:30px;">⏰ Recordatorios</h3>
-      <p class="hint">Los avisos aparecen como notificación en el navegador cuando llega la hora. Pídele a MiClaw: «recuérdame llamar a Ana mañana a las 9».</p>
+      <p class="hint">Los avisos aparecen como notificación en el navegador cuando llega la hora. Pídele: «recuérdame llamar a Ana mañana a las 9».</p>
       <div id="recordatorios-list" class="apuntes-list"></div>
+
+      <h3 style="margin-top:30px;">🤖 Tareas autónomas</h3>
+      <p class="hint">MiClaw ejecuta acciones SOLO a la hora programada (buscar, resumir, guardar…). Pídele «programa una tarea…» o créala aquí. Sin acciones de PC en modo automático.</p>
+      <div class="tarea-crear">
+        <input type="text" id="tarea-prompt" placeholder="¿Qué debe hacer? (ej: busca las noticias de tecnología)">
+        <input type="text" id="tarea-cuando" placeholder="¿Cuándo? (ej: mañana a las 9)">
+        <button class="btn-primary" id="btn-tarea-crear" style="margin-top:0">⚡ Programar</button>
+      </div>
+      <div id="tareas-list" class="apuntes-list"></div>
     </section>
   </main>
+</div>
+
+<!-- ============ PALETA DE COMANDOS ============ -->
+<div id="paleta" class="paleta hidden">
+  <div class="paleta-box">
+    <input id="paleta-input" placeholder="⌘ Escribe un comando…  (↑↓ navegar · Enter ejecutar · Esc cerrar)">
+    <div id="paleta-items"></div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
