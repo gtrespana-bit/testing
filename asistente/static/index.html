@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiClaw — Superinteligencia local</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="bg-orbs" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+<canvas id="neural" aria-hidden="true"></canvas>
+
+<!-- ============ PANTALLA DE ARRANQUE (IA despertando) ============ -->
+<div id="boot" class="boot">
+  <div class="boot-core">🦞</div>
+  <h1 class="boot-title">MiClaw</h1>
+  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.4</div>
+  <div class="boot-bar"><div class="boot-bar-fill" id="boot-fill"></div></div>
+  <div class="boot-logs" id="boot-logs"></div>
+  <div class="boot-skip" id="boot-skip">tocar para saltar</div>
+</div>
+
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">🦞</div>
+      <div class="brand-text">
+        <h1>MiClaw</h1>
+        <span class="version">v1.4 · núcleo neuronal</span>
+      </div>
+    </div>
+
+    <button class="new-chat-btn" id="btn-nueva">✚ Nueva conversación</button>
+
+    <div class="search-box">
+      <input type="text" id="buscar-conv" placeholder="Buscar conversaciones…">
+    </div>
+
+    <div class="conv-list" id="lista-conversaciones"></div>
+
+    <div class="sidebar-bottom">
+      <button class="nav-btn" data-view="chat">💬 Chat</button>
+      <button class="nav-btn" data-view="ajustes">⚙️ Ajustes</button>
+      <button class="nav-btn" data-view="memoria">🧠 Memoria</button>
+      <button class="nav-btn" id="btn-tema">☀️ Tema claro</button>
+      <button class="nav-btn" id="btn-paleta" title="Paleta de comandos (Ctrl+K)">⌘ Comandos</button>
+
+      <div class="provider-mini" id="provider-box" title="Proveedor activo">
+        <span class="dot" id="provider-dot"></span>
+        <div class="provider-mini-text">
+          <strong id="provider-name">—</strong>
+          <span id="provider-model">—</span>
+        </div>
+      </div>
+      <p class="privacy-note">🔒 100% local · tus datos y claves no salen de este PC</p>
+    </div>
+  </aside>
+
+  <!-- ================= CONTENIDO ================= -->
+  <main class="content">
+
+    <!-- ---------- CHAT ---------- -->
+    <section id="view-chat" class="view active">
+      <header class="chat-top">
+        <div class="chat-title-wrap">
+          <h2 id="chat-titulo">Nueva conversación</h2>
+          <span class="chip" id="chip-proveedor"></span>
+        </div>
+        <div class="chat-top-actions">
+          <button class="icon-btn" id="btn-exportar" title="Exportar conversación (Markdown)">⬇</button>
+        </div>
+      </header>
+
+      <div class="hud" id="hud">
+        <span class="hud-dot" id="hud-dot"></span>
+        <span class="hud-label">NÚCLEO ACTIVO</span>
+        <span class="hud-sep">·</span>
+        <span id="hud-prov">—</span>
+        <span class="hud-sep">·</span>
+        <span id="hud-tele">sin telemetría</span>
+      </div>
+
+      <div id="welcome" class="welcome">
+        <div class="welcome-logo">🦞</div>
+        <div class="welcome-tag">INTERFAZ NEURONAL · CONEXIÓN ESTABLE</div>
+        <h1>Hola, soy MiClaw</h1>
+        <p>Tu superinteligencia local: chateo, veo imágenes, busco en la web,<br>
+        guardo recuerdos, trabajo con tu PC y ejecuto tareas solas — siempre con tu permiso.</p>
+        <div class="chips">
+          <button class="chip-sug" data-s="busca en internet las noticias de tecnología de hoy">🔍 Busca noticias de hoy</button>
+          <button class="chip-sug" data-s="recuerda que mi color favorito es el verde">🧠 Guárdame un dato</button>
+          <button class="chip-sug" data-s="lee el archivo README.md del proyecto y resúmelo">📄 Resume mi archivo</button>
+          <button class="chip-sug" data-s="¿cuánto espacio libre tiene mi disco?">💻 Mira mi disco</button>
+          <button class="chip-sug" data-s="calcula la raíz cuadrada de 2025 y multiplícala por pi">🧮 Calcula algo</button>
+        </div>
+        <p class="welcome-hint">Núcleo: <span id="welcome-provider">—</span> · config en <button class="linklike" id="ir-ajustes">Ajustes</button> · ⌘K para comandos</p>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div id="adjuntos" class="adjuntos"></div>
+      <form id="chat-form" class="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Transmite tu mensaje…  (Enter enviar · Shift+Enter salto)"></textarea>
+        <button type="button" class="mic-btn" id="btn-mic" title="Dictar por voz">🎤</button>
+        <button type="button" class="clip-btn" id="btn-adjunto" title="Adjuntar imagen o archivo">📎</button>
+        <input type="file" id="file-input" hidden multiple accept="image/*,.txt,.md,.py,.json,.csv,.log,.js,.html,.css,.ts,.tsx,.jsx">
+        <button type="submit" id="btn-send" title="Enviar">➤</button>
+      </form>
+    </section>
+
+    <!-- ---------- AJUSTES ---------- -->
+    <section id="view-ajustes" class="view scroll-view">
+      <div class="view-head">
+        <h2>⚙️ Ajustes</h2>
+        <p class="hint">Todo gratuito y sin tarjeta. Cambia de proveedor cuando quieras — en un clic.</p>
+      </div>
+
+      <div class="card">
+        <h3>1 · Proveedor de IA</h3>
+        <div id="provider-list" class="provider-list"></div>
+      </div>
+
+      <div class="card" id="card-modelo">
+        <h3>2 · Modelo</h3>
+        <select id="select-modelo"></select>
+        <button class="btn-primary" id="btn-probar">⚡ Probar conexión</button>
+        <span id="probar-resultado" class="probar-resultado"></span>
+      </div>
+
+      <div class="card" id="card-custom" style="display:none">
+        <h3>2b · Proveedor personalizado (cualquier API compatible con OpenAI)</h3>
+        <p class="hint">Pon la URL base (sin /chat/completions) y la lista de modelos, uno por línea. Funciona con LM Studio, vLLM y otros.</p>
+        <label class="mini-label" for="custom-url">URL base</label>
+        <input type="text" id="custom-url" placeholder="https://mi-servidor.com/v1">
+        <label class="mini-label" for="custom-modelos">Modelos (uno por línea)</label>
+        <textarea id="custom-modelos" rows="4" placeholder="mi-modelo-1&#10;mi-modelo-2"></textarea>
+        <button class="btn-primary" id="btn-custom">💾 Guardar personalizado</button>
+      </div>
+
+      <div class="card">
+        <h3>3 · Claves API</h3>
+        <p class="hint">Cada proveedor necesita su clave. Se guardan solo en tu PC (data/config.json).</p>
+        <div id="key-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>4 · Acceso a tu PC</h3>
+        <p class="hint">MiClaw puede leer/escribir archivos y ejecutar comandos. <strong>Nunca ejecuta nada sin tu confirmación.</strong> Por defecto solo puede tocar tu carpeta de usuario y la del proyecto.</p>
+        <label class="mini-label" for="pc-carpeta">Carpeta extra permitida (opcional)</label>
+        <input type="text" id="pc-carpeta" placeholder="C:\Users\TuNombre\Documentos  o  /home/tu/Proyectos">
+        <button class="btn-primary" id="btn-pc-config">💾 Guardar carpeta</button>
+      </div>
+
+      <div class="card">
+        <h3>4b · Base de conocimiento de código (RAG)</h3>
+        <p class="hint">Indexa una carpeta de proyectos para que MiClaw responda sobre TU código: «¿dónde está la función que valida emails?». Todo local, sin enviar nada a internet.</p>
+        <input type="text" id="rag-ruta" placeholder="C:\Users\Tu\Proyectos  o  /home/tu/proyectos">
+        <button class="btn-primary" id="btn-rag-indexar">🧠 Indexar ahora</button>
+        <div id="rag-estado" class="probar-resultado"></div>
+      </div>
+
+      <div class="card">
+        <h3>5 · Modo de trabajo</h3>
+        <p class="hint">MiClaw cambia su especialidad según el modo. El <strong>modo Programador</strong> es ideal para código, bugs y crear proyectos.</p>
+        <select id="select-modo"></select>
+      </div>
+
+      <div class="card">
+        <h3>6 · Preferencias</h3>
+        <label class="toggle-row">
+          <input type="checkbox" id="toggle-memoria">
+          <span>Usar la memoria (apuntes) en las conversaciones</span>
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>8 · Multi-dispositivo y seguridad 🔐</h3>
+        <p class="hint">Accede desde tu móvil u otro dispositivo en la misma red WiFi con la dirección <strong id="red-ips">(consultando…)</strong>. Opcional: activa un PIN para que nadie use MiClaw sin él.</p>
+        <label class="mini-label" for="pin-input">PIN de acceso (déjalo vacío para desactivar)</label>
+        <input type="password" id="pin-input" placeholder="PIN de 4-8 dígitos" autocomplete="new-password">
+        <button class="btn-primary" id="btn-pin">🔐 Guardar PIN</button>
+        <span id="pin-estado" class="probar-resultado"></span>
+      </div>
+
+      <div class="card">
+        <h3>7 · Voz 🎤🔊</h3>
+        <p class="hint">MiClaw puede leer sus respuestas en voz alta y tú puedes dictar con el micrófono del chat. Gratis y local (Web Speech).</p>
+        <label class="toggle-row">
+          <input type="checkbox" id="toggle-voz">
+          <span>Leer las respuestas en voz alta automáticamente</span>
+        </label>
+        <label class="mini-label" for="select-voz">Voz (español)</label>
+        <select id="select-voz"></select>
+        <label class="mini-label" for="rango-voz">Velocidad: <span id="voz-vel-label">1.00×</span></label>
+        <input type="range" id="rango-voz" min="0.5" max="1.5" step="0.05" value="1">
+        <button class="btn-primary" id="btn-probar-voz">🔊 Probar voz</button>
+      </div>
+    </section>
+
+    <!-- ---------- MEMORIA ---------- -->
+    <section id="view-memoria" class="view scroll-view">
+      <div class="view-head">
+        <h2>🧠 Memoria</h2>
+        <p class="hint">Apuntes que MiClaw guarda sobre ti y consulta en cada conversación. Todo en tu disco.</p>
+      </div>
+      <div id="apuntes-list" class="apuntes-list"></div>
+      <button class="danger-btn" id="btn-borrar-memoria">🗑 Borrar toda la memoria</button>
+
+      <h3 style="margin-top:30px;">⏰ Recordatorios</h3>
+      <p class="hint">Los avisos aparecen como notificación en el navegador cuando llega la hora. Pídele: «recuérdame llamar a Ana mañana a las 9».</p>
+      <div id="recordatorios-list" class="apuntes-list"></div>
+
+      <h3 style="margin-top:30px;">🤖 Tareas autónomas</h3>
+      <p class="hint">MiClaw ejecuta acciones SOLO a la hora programada (buscar, resumir, guardar…). Pídele «programa una tarea…» o créala aquí. Sin acciones de PC en modo automático.</p>
+      <div class="tarea-crear">
+        <input type="text" id="tarea-prompt" placeholder="¿Qué debe hacer? (ej: busca las noticias de tecnología)">
+        <input type="text" id="tarea-cuando" placeholder="¿Cuándo? (ej: mañana a las 9)">
+        <button class="btn-primary" id="btn-tarea-crear" style="margin-top:0">⚡ Programar</button>
+      </div>
+      <div id="tareas-list" class="apuntes-list"></div>
+
+      <h3 style="margin-top:30px;">📊 Informes generados</h3>
+      <p class="hint">Resúmenes e informes que MiClaw guarda como Markdown (data/informes/). Pídele: «guarda un informe de esto».</p>
+      <div id="informes-list" class="apuntes-list"></div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ PALETA DE COMANDOS ============ -->
+<div id="paleta" class="paleta hidden">
+  <div class="paleta-box">
+    <input id="paleta-input" placeholder="⌘ Escribe un comando…  (↑↓ navegar · Enter ejecutar · Esc cerrar)">
+    <div id="paleta-items"></div>
+  </div>
+</div>
+
+<div id="modal" class="paleta hidden">
+  <div class="paleta-box modal-box">
+    <div class="modal-head">
+      <span id="modal-titulo">📊 Informe</span>
+      <button class="ghost-btn" id="modal-cerrar">✕ Cerrar</button>
+    </div>
+    <pre id="modal-content" class="modal-content"></pre>
+  </div>
+</div>
+
+<!-- ============ PANTALLA DE BLOQUEO (PIN) ============ -->
+<div id="lock" class="lock hidden">
+  <div class="lock-box">
+    <div class="lock-icon">🔐</div>
+    <h2>MiClaw protegido</h2>
+    <p>Este asistente tiene PIN de acceso. Introdúcelo para continuar.</p>
+    <input type="password" id="lock-pin" placeholder="PIN de acceso" autocomplete="current-password">
+    <button class="btn-primary" id="lock-btn">Desbloquear</button>
+    <div id="lock-err" class="lock-err"></div>
+    <p class="privacy-note" style="margin-top:10px">🔒 El PIN se guarda con hash en tu PC · nada sale de tu red local</p>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
