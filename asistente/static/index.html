@@ -14,7 +14,7 @@
 <div id="boot" class="boot">
   <div class="boot-core">🦞</div>
   <h1 class="boot-title">MiClaw</h1>
-  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.4</div>
+  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.6</div>
   <div class="boot-bar"><div class="boot-bar-fill" id="boot-fill"></div></div>
   <div class="boot-logs" id="boot-logs"></div>
   <div class="boot-skip" id="boot-skip">tocar para saltar</div>
@@ -27,7 +27,7 @@
       <div class="brand-logo">🦞</div>
       <div class="brand-text">
         <h1>MiClaw</h1>
-        <span class="version">v1.4 · núcleo neuronal</span>
+        <span class="version">v1.6 · núcleo neuronal</span>
       </div>
     </div>
 
@@ -79,6 +79,8 @@
         <span id="hud-prov">—</span>
         <span class="hud-sep">·</span>
         <span id="hud-tele">sin telemetría</span>
+        <span class="hud-sep">·</span>
+        <span id="hud-auto" class="hud-auto" hidden>⚡ AUTO-APROBAR</span>
       </div>
 
       <div id="welcome" class="welcome">
@@ -147,6 +149,11 @@
       <div class="card">
         <h3>4 · Acceso a tu PC</h3>
         <p class="hint">MiClaw puede leer/escribir archivos y ejecutar comandos. <strong>Nunca ejecuta nada sin tu confirmación.</strong> Por defecto solo puede tocar tu carpeta de usuario y la del proyecto.</p>
+        <label class="toggle-row">
+          <input type="checkbox" id="toggle-auto">
+          <span>🚀 <strong>Auto-aprobar acciones</strong> — ejecutar comandos, escribir archivos y usar herramientas SIN pedir confirmación cada vez</span>
+        </label>
+        <p class="hint" style="margin-top:8px;color:var(--warn)">⚠️ Si lo activas, MiClaw hará directamente lo que le pidas (instalar, borrar, ejecutar…) sin mostrarte la tarjeta de aprobación. Úsalo solo si te fías de lo que pides.</p>
         <label class="mini-label" for="pc-carpeta">Carpeta extra permitida (opcional)</label>
         <input type="text" id="pc-carpeta" placeholder="C:\Users\TuNombre\Documentos  o  /home/tu/Proyectos">
         <button class="btn-primary" id="btn-pc-config">💾 Guardar carpeta</button>
@@ -172,6 +179,11 @@
           <input type="checkbox" id="toggle-memoria">
           <span>Usar la memoria (apuntes) en las conversaciones</span>
         </label>
+        <label class="toggle-row" style="margin-top:12px">
+          <input type="checkbox" id="toggle-razonamiento">
+          <span>🧠 <strong>Razonamiento profundo (thinking)</strong> — más reflexivo pero más lento</span>
+        </label>
+        <p class="hint" style="margin-top:8px;color:var(--ok)">⚡ Desactivado = <strong>modo rápido</strong>. Con modelos Qwen (Alibaba) MiClaw no genera la cadena de pensamiento oculta y responde mucho antes.</p>
       </div>
 
       <div class="card">

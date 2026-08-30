@@ -4,8 +4,10 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.4 — nivel 4**: diff visual antes de cada modificación, captura de
-> pantalla con visión, y acceso multi-dispositivo con PIN.
+> **v1.6**: panel de actividad en vivo — ves qué está haciendo MiClaw mientras
+> piensa (pasos, herramientas y su razonamiento), para que nunca parezca que
+> se quedó bloqueado. Incluye auto-aprobación opcional, modo rápido para Qwen
+> y acceso multi-dispositivo con PIN.
 >
 > 📘 **Documentación completa para retomar el proyecto (y hacer el PR):**
 > [docs/ESTADO-DEL-PROYECTO.md](docs/ESTADO-DEL-PROYECTO.md)
@@ -48,6 +50,11 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
   - 📦 **Acciones en lote**: varias acciones propuestas a la vez, apruebas las que quieras
   - Cada acción muestra una tarjeta **Aprobar / Rechazar**; por defecto solo
     puede tocar tu carpeta de usuario y la del proyecto (ajustable).
+  - 🚀 **Auto-aprobación opcional** (Ajustes → Acceso a tu PC): si la activas,
+    MiClaw ejecuta comandos, escribe archivos y usa herramientas **sin pedir
+    confirmación cada vez** — ideal para programar sin interrupciones.
+- ⚡ **Modo rápido**: con modelos Qwen (Alibaba) puedes desactivar la cadena de
+  pensamiento (Ajustes → Preferencias) para que responda mucho antes.
 
 ### Experiencia premium
 - 👁️ **Visión** — adjunta imágenes o archivos al chat (📎 o arrastrando):
@@ -68,6 +75,10 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
   respuesta, tiempo de síntesis y tokens estimados.
 - 🧬 **Red neuronal animada** de fondo + pantalla de arranque estilo IA despertando.
 - ⚡ **Streaming real** — las respuestas aparecen palabra a palabra, en vivo.
+- 🧠 **Panel de actividad en vivo** — mientras MiClaw piensa o ejecuta
+  herramientas, ves en el chat un panel con cada paso (🔍 buscando…,
+  💻 ejecutando…), el tiempo transcurrido y su **razonamiento** (cuando el
+  modelo lo expone). Al terminar queda un resumen desplegable «Cómo lo hice».
 - 🎤 **Voz** — lee respuestas en voz alta (🔊, auto-read, velocidad) y dictado 🎤.
 - ☀️🌙 **Modo claro y oscuro** con un clic.
 - 💾 **Conversaciones guardadas** con historial lateral y búsqueda.

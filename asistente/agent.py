@@ -134,7 +134,7 @@ def _extraer_tool(texto):
 
 
 def responder(history, provider=None, model=None, tool_result=None, max_tool_rounds=5,
-              no_pc=False):
+              no_pc=False, auto_aprobar=False):
     """
     Devuelve un dict:
       {"tipo": "respuesta", "texto": ...}  → respuesta final
@@ -143,6 +143,8 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
     (es el resultado de una acción de PC que el usuario ya aprobó).
     Si `no_pc` es True (tareas automáticas), las acciones de PC se saltan
     automáticamente sin pedir permiso.
+    Si `auto_aprobar` es True, las acciones de PC se ejecutan directamente
+    sin pedir confirmación (activado en Ajustes → Acceso a tu PC).
     """
     provider = provider or config.get_provider()
     model = model or config.get_model()
@@ -166,6 +168,28 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
                     "content": ("Acción de PC no permitida en modo automático. "
                                 "No la ejecutes y responde con lo que puedas."),
                 })
+                continue
+            if auto_aprobar:
+                lote = pc.parsear_lote(texto)
+                acciones = lote if len(lote) > 1 else [{"accion": tid, "datos": arg}]
+                for a in acciones:
+                    r = pc.ejecutar(a["accion"], a["datos"])
+                    if r.startswith("@@IMAGEN@@"):
+                        partes = r.split("\n", 2)
+                        datauri = partes[1] if len(partes) > 1 else ""
+                        nota = partes[2] if len(partes) > 2 else ""
+                        messages.append({"role": "assistant", "content": texto})
+                        messages.append({
+                            "role": "user",
+                            "content": "[Captura de pantalla tomada. Analízala y responde.] " + nota,
+                            "imagen": datauri,
+                        })
+                        break
+                    messages.append({"role": "assistant", "content": texto})
+                    messages.append({
+                        "role": "tool",
+                        "content": f"Resultado de la herramienta {a['accion']}:\n{r}",
+                    })
                 continue
             # ¿Varias acciones en un solo mensaje? Se aprueban en lote.
             lote = pc.parsear_lote(texto)
@@ -207,16 +231,22 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
     return {"tipo": "respuesta", "texto": "He agotado los intentos con las herramientas. Prueba a reformular la petición."}
 
 
-def responder_stream(history, provider=None, model=None, tool_result=None, max_tool_rounds=5):
+def responder_stream(history, provider=None, model=None, tool_result=None, max_tool_rounds=5,
+                     auto_aprobar=False):
     """
     Igual que responder() pero con STREAMING real: va emitiendo eventos:
       {"tipo":"token","texto":...}   → trozo de la respuesta (se muestra en vivo)
-      {"tipo":"tool","id":...,"nombre":...}  → se ejecutó una herramienta automática
+      {"tipo":"paso","icono":...,"texto":...} → línea de progreso (qué está haciendo)
+      {"tipo":"pensamiento","texto":...} → cadena de pensamiento del modelo (reasoning)
+      {"tipo":"tool","id":...,"nombre":...}  → empieza a ejecutar una herramienta
+      {"tipo":"tool_done","id":...,"nombre":...,"resumen":...} → herramienta terminada
       {"tipo":"permiso","accion":...,"datos":...,"texto":...} → pide aprobación al usuario
       {"tipo":"error","texto":...}
-      {"tipo":"done"}                → respuesta completa
+      {"tipo":"done","segundos":...,"tokens":...}  → respuesta completa
     Si `tool_result` no es None, se inyecta como mensaje "tool" antes del bucle
     (resultado de una acción de PC que el usuario ya aprobó).
+    Si `auto_aprobar` es True, las acciones de PC se ejecutan directamente
+    sin pedir confirmación.
     """
     provider = provider or config.get_provider()
     model = model or config.get_model()
@@ -225,17 +255,31 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
     if tool_result is not None:
         messages.append({"role": "tool", "content": str(tool_result)})
 
+    def _resumen(r):
+        r = (r or "").strip().replace("\n", " ")
+        return r[:90] + ("…" if len(r) > 90 else "")
+
     t0 = time.time()
+    yield {"tipo": "paso", "icono": "🧠", "texto": "Analizando tu petición…"}
     for _ in range(max_tool_rounds + 1):
         buffer = []
         try:
             for chunk in providers.stream_chat(provider, model, messages):
-                buffer.append(chunk)
-                acumulado = "".join(buffer)
-                # No reenviamos el texto si parece el inicio de un token de
-                # herramienta (así el usuario no ve "@@TOOL:..." por pantalla).
-                if not acumulado.lstrip().startswith("@@"):
-                    yield {"tipo": "token", "texto": chunk}
+                if isinstance(chunk, dict):
+                    texto = chunk.get("texto", "") or ""
+                    razon = chunk.get("razon", "") or ""
+                else:
+                    texto = chunk or ""
+                    razon = ""
+                if razon:
+                    yield {"tipo": "pensamiento", "texto": razon}
+                if texto:
+                    buffer.append(texto)
+                    acumulado = "".join(buffer)
+                    # No reenviamos el texto si parece el inicio de un token de
+                    # herramienta (así el usuario no ve "@@TOOL:..." por pantalla).
+                    if not acumulado.lstrip().startswith("@@"):
+                        yield {"tipo": "token", "texto": texto}
         except providers.ProviderError as e:
             yield {"tipo": "error", "texto": str(e)}
             return
@@ -255,6 +299,34 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
             return
 
         if tipo == "pc":
+            if auto_aprobar:
+                lote = pc.parsear_lote(texto)
+                acciones = lote if len(lote) > 1 else [{"accion": tid, "datos": arg}]
+                for a in acciones:
+                    nombre = next((t["nombre"] for t in tools.TOOLS if t["id"] == a["accion"]), a["accion"])
+                    yield {"tipo": "tool", "id": a["accion"], "nombre": nombre}
+                    r = pc.ejecutar(a["accion"], a["datos"])
+                    if r.startswith("@@IMAGEN@@"):
+                        partes = r.split("\n", 2)
+                        datauri = partes[1] if len(partes) > 1 else ""
+                        nota = partes[2] if len(partes) > 2 else ""
+                        yield {"tipo": "tool_done", "id": a["accion"], "nombre": nombre,
+                               "resumen": "Captura tomada y analizada con visión."}
+                        messages.append({"role": "assistant", "content": texto})
+                        messages.append({
+                            "role": "user",
+                            "content": "[Captura de pantalla tomada. Analízala y responde.] " + nota,
+                            "imagen": datauri,
+                        })
+                        break
+                    yield {"tipo": "tool_done", "id": a["accion"], "nombre": nombre,
+                           "resumen": _resumen(r)}
+                    messages.append({"role": "assistant", "content": texto})
+                    messages.append({
+                        "role": "tool",
+                        "content": f"Resultado de la herramienta {a['accion']}:\n{r}",
+                    })
+                continue
             lote = pc.parsear_lote(texto)
             if len(lote) > 1:
                 yield {"tipo": "permiso", "accion": "lote", "datos": lote, "texto": texto}
@@ -270,6 +342,8 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
             partes = resultado.split("\n", 2)
             datauri = partes[1] if len(partes) > 1 else ""
             nota = partes[2] if len(partes) > 2 else ""
+            yield {"tipo": "tool_done", "id": tid, "nombre": nombre,
+                   "resumen": "Captura tomada y analizada con visión."}
             messages.append({"role": "assistant", "content": texto})
             messages.append({
                 "role": "user",
@@ -277,6 +351,7 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
                 "imagen": datauri,
             })
             continue
+        yield {"tipo": "tool_done", "id": tid, "nombre": nombre, "resumen": _resumen(resultado)}
         messages.append({"role": "assistant", "content": texto})
         messages.append({
             "role": "tool",

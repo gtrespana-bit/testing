@@ -21,8 +21,10 @@ local, que corre en el ordenador del usuario:
   telemetría, pantalla de arranque futurista, red neuronal animada de fondo,
   multi-dispositivo con PIN.
 
-**Versión actual: 1.4.0** — todo commiteado y empujado al branch
-`arena/01a05486-testing` (ver §9 para el PR).
+**Versión actual: 1.6.0** — añade el **panel de actividad en vivo**: mientras
+MiClaw piensa/ejecuta, el chat muestra pasos, herramientas y razonamiento en
+tiempo real (eventos `paso`, `pensamiento`, `tool`, `tool_done`). Ver §9 para
+el PR.
 
 ---
 
@@ -92,6 +94,8 @@ testing/
 | **v1.2** | Visión (adjuntar imágenes/archivos), tareas autónomas, paleta de comandos (Ctrl+K), HUD de telemetría, red neuronal de fondo, boot futurista, instaladores Windows |
 | **v1.3** | Modos de trabajo (General/Programador/Investigador/Escritor), acciones en lote (casillas), grep/listar carpetas, leer PDF/Word/Excel, tareas recurrentes |
 | **v1.4** | **Diff visual** antes de modificar archivos, **captura de pantalla** con visión, **multi-dispositivo con PIN**, doc de retoma (este archivo) |
+| **v1.5** | **Auto-aprobación opcional** (Ajustes → Acceso a tu PC): ejecuta comandos/archivos/herramientas sin pedir confirmación; **modo rápido** para Qwen (desactiva el `thinking` vía `extra_body: {enable_thinking: false}`); `/api/estado` más veloz (una sola llamada a Ollama) |
+| **v1.6** | **Panel de actividad en vivo** en el chat: pasos en ejecución, herramientas con su resultado y razonamiento del modelo en tiempo real; los streamers de proveedores ahora emiten dicts `{"texto","razon"}` (OpenAI-compatible `reasoning_content`/`reasoning`, Gemini `thought`, Ollama `thinking`); resumen desplegable «Cómo lo hice» tras cada respuesta |
 
 ### Detalle de capacidades actuales
 
@@ -111,16 +115,24 @@ código. Modelos recomendados para programar: Qwen3-Coder-Plus (Alibaba), GPT-OS
 - Sandbox de rutas: solo tu carpeta de usuario + la del proyecto (+ carpeta
   extra configurable en Ajustes).
 
-**Seguridad:** cada acción sobre el PC se aprueba manualmente; las tareas
-automáticas corren con `no_pc=True` (prohibido tocar el PC); claves y PIN
-guardados solo en local (PIN con hash); **PIN opcional** que bloquea toda la
-API para accesos desde otros dispositivos (el token se guarda en localStorage
+**Seguridad:** cada acción sobre el PC se aprueba manualmente **por defecto**;
+el usuario puede activar **auto-aprobación** en Ajustes (`config.auto_aprobar()`
+→ `agent.responder_stream(..., auto_aprobar=True)` ejecuta las acciones `@@PC:` 
+directamente y sigue el bucle, emitiendo un evento `tool` por acción); las
+tareas automáticas corren con `no_pc=True` (prohibido tocar el PC); claves y
+PIN guardados solo en local (PIN con hash); **PIN opcional** que bloquea toda
+la API para accesos desde otros dispositivos (el token se guarda en localStorage
 del navegador, expira a los 7 días).
 
 **Streaming:** `/api/chat` devuelve NDJSON de eventos:
-`{"tipo":"token"|"tool"|"permiso"|"error"|"done", ...}`. `done` incluye
-`segundos` y `tokens` (telemetría). Las herramientas se resuelven dentro del
-mismo stream (el agente ejecuta y continúa hasta `max_tool_rounds=5`).
+`{"tipo":"paso"|"pensamiento"|"token"|"tool"|"tool_done"|"permiso"|"error"|"done", ...}`.
+- `paso` → línea de progreso («Analizando tu petición…»).
+- `pensamiento` → razonamiento del modelo (reasoning) en vivo.
+- `tool` / `tool_done` → herramienta iniciada / terminada (con `resumen`).
+- `done` incluye `segundos` y `tokens` (telemetría).
+
+Las herramientas se resuelven dentro del mismo stream (el agente ejecuta y
+continúa hasta `max_tool_rounds=5`).
 
 **Visión:** los mensajes pueden llevar `{"role":"user","content":...,"imagen":"data:image/..."}`;
 los builders de providers (`_build_openai_messages`, `_build_gemini_contents`,
@@ -227,7 +239,7 @@ git push origin arena/01a05486-testing   # ya empujado; por si acaso
 
 # Opción A — con GitHub CLI:
 gh pr create --base main --head arena/01a05486-testing \
-  --title "MiClaw: asistente personal de IA gratis y local (v1.4)" \
+  --title "MiClaw: asistente personal de IA gratis y local (v1.6)" \
   --body "Asistente estilo OpenClaw, 100% gratuito... (resumen de funcionalidades)"
 
 # Opción B — web:

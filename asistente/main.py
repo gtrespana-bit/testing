@@ -28,7 +28,7 @@ from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.4.1")
+app = FastAPI(title="MiClaw", version="1.6.0")
 
 # ---------------------------------------------------------------------------
 # PIN de acceso (multi-dispositivo). Token con expiración en memoria.
@@ -84,6 +84,8 @@ class ConfigBody(BaseModel):
     memoria_incluida: bool | None = None
     modo: str | None = None
     pin: str | None = None
+    auto_aprobar: bool | None = None
+    razonamiento: bool | None = None
 
 
 class PinBody(BaseModel):
@@ -118,6 +120,9 @@ class TareaBody(BaseModel):
 @app.get("/api/estado")
 def estado():
     cfg = config.load_config()
+    # Los modelos de Ollama se piden UNA sola vez (evita dos llamadas de red
+    # seguidas al arrancar y acelera la carga de Ajustes).
+    ollama_modelos = providers.list_ollama_models()
     proveedores = {}
     for pid, info in providers.PROVIDERS.items():
         proveedores[pid] = {
@@ -125,7 +130,7 @@ def estado():
             "info": info["info"],
             "enlace": info["enlace"],
             "tipo": info["tipo"],
-            "modelos": providers.list_models(pid),
+            "modelos": ollama_modelos if pid == "ollama" else providers.list_models(pid),
         }
     return {
         "version": app.version,
@@ -133,9 +138,11 @@ def estado():
         "modelo": cfg.get("modelo"),
         "claves": {p: bool(k) for p, k in cfg.get("claves", {}).items()},
         "proveedores": proveedores,
-        "ollama_activo": bool(providers.list_ollama_models()),
+        "ollama_activo": bool(ollama_modelos),
         "custom": config.get_custom(),
         "pc": {"carpeta_extra": (cfg.get("pc") or {}).get("carpeta_extra", "")},
+        "auto_aprobar": cfg.get("auto_aprobar", False),
+        "razonamiento": cfg.get("razonamiento", False),
         "memoria_incluida": cfg.get("memoria_incluida", True),
         "modo": cfg.get("modo", "general"),
         "modos": {
@@ -169,7 +176,8 @@ def chat(body: ChatBody):
     def gen():
         try:
             for ev in agent.responder_stream(
-                body.messages, body.provider, body.model, tool_result=body.tool_result
+                body.messages, body.provider, body.model, tool_result=body.tool_result,
+                auto_aprobar=config.auto_aprobar(),
             ):
                 yield json.dumps(ev, ensure_ascii=False) + "\n"
         except providers.ProviderError as e:
@@ -252,6 +260,10 @@ def guardar_config(body: ConfigBody):
         cfg["memoria_incluida"] = body.memoria_incluida
     if body.modo is not None:
         cfg["modo"] = body.modo
+    if body.auto_aprobar is not None:
+        cfg["auto_aprobar"] = body.auto_aprobar
+    if body.razonamiento is not None:
+        cfg["razonamiento"] = body.razonamiento
     config.save_config(cfg)
     if body.pin is not None:
         config.set_pin(body.pin)
