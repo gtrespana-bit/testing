@@ -1,8 +1,11 @@
 """
-Herramientas básicas de MiClaw: búsqueda web y notas rápidas.
+Herramientas de MiClaw: búsqueda web, notas y acceso al PC.
 
 Cuando una petición encaja con una herramienta, la respuesta se compone
-como:  @@TOOL:NOMBRE@@\n{datos}
+como:
+  @@TOOL:NOMBRE@@\n{datos}      → se ejecuta automáticamente
+  @@PC:ACCION@@\n{datos}        → pide confirmación al usuario antes de ejecutar
+
 El servidor ejecuta la herramienta y devuelve el resultado como un mensaje
 "tool" que el modelo puede usar para responder.
 """
@@ -15,21 +18,61 @@ try:
 except ImportError:
     DDGS = None
 
+from . import pc
+
 # Con esta lista se decide (en el prompt) qué puede hacer el asistente.
+# Las de tipo "auto" se ejecutan solas; las de tipo "permiso" piden
+# confirmación al usuario antes de tocar nada.
 TOOLS = [
     {
         "id": "web",
         "nombre": "Buscar en internet",
-        "descripcion": "Busca información actualizada en la web (noticias, datos, precios...). "
-                       "Úsala cuando necesites información que no sabes con seguridad.",
-        "formato": '@@TOOL:web@@\\n{consulta}',
+        "descripcion": ("Busca información actualizada en la web (noticias, datos, "
+                        "precios...). Úsala cuando necesites información que no sabes "
+                        "con seguridad."),
+        "tipo": "auto",
+        "formato": '@@TOOL:web@@\n{consulta}',
     },
     {
         "id": "nota",
         "nombre": "Guardar nota rápida",
-        "descripcion": "Guarda un dato en la memoria (nombre de un amigo, fechas, preferencias...). "
-                       "Usa SOLO para datos importantes que quieras recordar en el futuro.",
-        "formato": '@@TOOL:nota@@\\n{texto a recordar}',
+        "descripcion": ("Guarda un dato en la memoria (nombre de un amigo, fechas, "
+                        "preferencias...). Usa SOLO para datos importantes que quieras "
+                        "recordar en el futuro."),
+        "tipo": "auto",
+        "formato": '@@TOOL:nota@@\n{texto a recordar}',
+    },
+    {
+        "id": "ver",
+        "nombre": "Ver un archivo de tu PC",
+        "descripcion": ("Lee el contenido de un archivo de tu ordenador para "
+                        "resumirlo, corregirlo o trabajar con él."),
+        "tipo": "permiso",
+        "formato": '@@PC:ver@@\n{ruta completa del archivo}',
+    },
+    {
+        "id": "escribir",
+        "nombre": "Crear o editar un archivo",
+        "descripcion": ("Crea un archivo nuevo o sobrescribe uno existente en tu "
+                        "ordenador (texto, código, scripts...)."),
+        "tipo": "permiso",
+        "formato": '@@PC:escribir@@\nRUTA: {ruta completa}\n{contenido}',
+    },
+    {
+        "id": "terminal",
+        "nombre": "Ejecutar un comando en tu terminal",
+        "descripcion": ("Ejecuta un comando en tu ordenador (instalar programas, "
+                        "ver carpetas, etc.). El usuario SIEMPRE debe aprobarlo."),
+        "tipo": "permiso",
+        "formato": '@@PC:terminal@@\nCOMANDO: {comando}',
+    },
+    {
+        "id": "apuntes",
+        "nombre": "Leer mis apuntes de memoria",
+        "descripcion": ("Muestra todos los apuntes guardados (la memoria de MiClaw). "
+                        "Úsala cuando el usuario pregunte por cosas guardadas."),
+        "tipo": "auto",
+        "formato": '@@PC:apuntes@@',
     },
 ]
 
@@ -39,6 +82,8 @@ def ejecutar(tool_id, argumento):
         return _buscar_web(argumento)
     if tool_id == "nota":
         return _guardar_nota(argumento)
+    if tool_id in ("ver", "escribir", "terminal", "apuntes"):
+        return pc.ejecutar(tool_id, argumento)
     return "Herramienta desconocida."
 
 

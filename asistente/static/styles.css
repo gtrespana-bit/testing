@@ -99,6 +99,35 @@ h3 { font-size: 15px; margin-bottom: 8px; }
 .msg.error { align-self: flex-start; background: rgba(255,92,92,.12); border: 1px solid rgba(255,92,92,.4); color: var(--err); }
 .msg.toolnote { align-self: flex-start; background: transparent; border: 1px dashed var(--border); color: var(--muted); font-size: 12.5px; }
 
+/* tarjeta de permiso (acción sobre el PC) */
+.msg.permiso {
+  align-self: flex-start;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 14px 16px;
+  max-width: 90%;
+  box-shadow: 0 0 0 3px rgba(124,92,255,.15);
+}
+.permiso-titulo { font-weight: 700; font-size: 14px; margin-bottom: 8px; color: var(--accent2); }
+.permiso-detalle {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 12.5px;
+  white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto;
+  margin-bottom: 12px; color: var(--text);
+}
+.permiso-botones { display: flex; gap: 10px; }
+.btn-ok {
+  background: var(--ok); color: #0b0d12; border: none; border-radius: 8px;
+  padding: 8px 18px; font-weight: 700; cursor: pointer; font-size: 13px;
+}
+.btn-ok:hover { filter: brightness(1.1); }
+.btn-no {
+  background: transparent; border: 1px solid var(--err); color: var(--err);
+  border-radius: 8px; padding: 8px 18px; cursor: pointer; font-size: 13px;
+}
+.btn-no:hover { background: rgba(255,92,92,.12); }
+
 .composer { display: flex; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; }
 .composer textarea {
   flex: 1; resize: none; background: var(--card); border: 1px solid var(--border); color: var(--text);
@@ -140,6 +169,14 @@ select:focus, input:focus { border-color: var(--accent); }
 .key-status { font-size: 12px; margin-left: 6px; }
 .key-status.ok { color: var(--ok); }
 .key-status.err { color: var(--err); }
+
+.mini-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.btn-primary {
+  background: var(--accent); color: white; border: none; border-radius: 8px;
+  padding: 9px 18px; cursor: pointer; font-size: 13px; font-weight: 600; margin-top: 12px;
+}
+.btn-primary:hover { filter: brightness(1.1); }
+#custom-modelos { font-family: ui-monospace, monospace; }
 
 /* ---------- memoria ---------- */
 .memoria-box {

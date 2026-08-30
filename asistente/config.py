@@ -78,3 +78,22 @@ def set_model(proveedor, modelo):
     config["proveedor"] = proveedor
     config["modelo"] = modelo
     save_config(config)
+
+
+def get_custom():
+    """Configuración del proveedor personalizado (URL base + modelos)."""
+    cfg = load_config()
+    c = cfg.get("custom") or {}
+    return {
+        "base_url": c.get("base_url", ""),
+        "modelos": c.get("modelos", []),
+    }
+
+
+def set_custom(base_url, modelos):
+    cfg = load_config()
+    cfg["custom"] = {
+        "base_url": base_url.strip(),
+        "modelos": [m.strip() for m in modelos if m.strip()],
+    }
+    save_config(cfg)

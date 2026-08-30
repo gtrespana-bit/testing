@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 
 let estado = null;
 let historial = [];
+let pendiente = null;   // plan de acción sobre el PC esperando aprobación
 
 /* ---------------- utilidades ---------------- */
 
@@ -26,7 +27,7 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove("show"), 2600);
+  t._timer = setTimeout(() => t.classList.remove("show"), 3000);
 }
 
 function esc(s) {
@@ -50,6 +51,8 @@ async function cargarEstado() {
   pintarModelos();
   pintarClaves();
   pintarCajaProveedor();
+  pintarCustom();
+  $("pc-carpeta").value = estado.pc.carpeta_extra || "";
 }
 
 /* ---------------- ajustes ---------------- */
@@ -57,20 +60,14 @@ async function cargarEstado() {
 function pintarProveedores() {
   const cont = $("provider-list");
   cont.innerHTML = "";
-  const NOMBRES = {
-    ollama: "🖥️ Ollama (local)",
-    gemini: "🔮 Google Gemini",
-    groq: "⚡ Groq",
-    openrouter: "🌐 OpenRouter",
-  };
   for (const [pid, info] of Object.entries(estado.proveedores)) {
     const div = document.createElement("div");
     div.className = "provider-item" + (estado.proveedor === pid ? " sel" : "");
-    const tieneClave = estado.claves[pid] || pid === "ollama";
+    const lista = info.tipo === "clave" ? Boolean(estado.claves[pid]) : true;
     div.innerHTML = `
-      <h4>${NOMBRES[pid]}</h4>
+      <h4>${esc(info.nombre)}</h4>
       <p>${esc(info.info)}</p>
-      <span class="badge">${tieneClave ? "✔ listo" : "sin clave"}</span>`;
+      <span class="badge">${lista ? "✔ listo" : "sin clave"}</span>`;
     div.onclick = () => seleccionarProveedor(pid);
     cont.appendChild(div);
   }
@@ -108,12 +105,12 @@ function pintarClaves() {
   const cont = $("key-list");
   cont.innerHTML = "";
   for (const [pid, info] of Object.entries(estado.proveedores)) {
-    if (pid === "ollama") continue; // local: no necesita clave
+    if (info.tipo !== "clave") continue; // ollama es local
     const row = document.createElement("div");
     row.className = "key-row";
     const tiene = estado.claves[pid];
     row.innerHTML = `
-      <label>${pid}</label>
+      <label title="${esc(info.nombre)}">${pid}</label>
       <input type="password" class="key-input" placeholder="${tiene ? "•••••••• (guardada)" : "pega tu clave aquí"}"
              data-provider="${pid}">
       <button data-save="${pid}">Guardar</button>
@@ -136,11 +133,15 @@ function pintarClaves() {
 
 function pintarCajaProveedor() {
   const info = estado.proveedores[estado.proveedor];
-  $("provider-name").textContent = info ? ({
-    ollama: "Ollama (local)", gemini: "Google Gemini", groq: "Groq", openrouter: "OpenRouter",
-  })[estado.proveedor] : estado.proveedor;
+  $("provider-name").textContent = info ? info.nombre : estado.proveedor;
   $("provider-model").textContent = estado.modelo || "";
   $("provider-dot").className = "dot" + (estado.proveedor === "ollama" && estado.ollama_activo ? " on" : "");
+}
+
+function pintarCustom() {
+  $("custom-url").value = estado.custom.base_url || "";
+  $("custom-modelos").value = (estado.custom.modelos || []).join("\n");
+  $("card-custom").style.display = estado.proveedor === "custom" ? "" : "none";
 }
 
 async function seleccionarProveedor(pid) {
@@ -151,7 +152,7 @@ async function seleccionarProveedor(pid) {
   estado.proveedor = pid;
   estado.modelo = modelo;
   await cargarEstado();
-  toast("Proveedor: " + pid);
+  toast("Proveedor: " + estado.proveedores[pid].nombre);
 }
 
 /* ---------------- chat ---------------- */
@@ -181,6 +182,38 @@ function redimensionar(textarea) {
   textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
 }
 
+/* Tarjeta de confirmación para acciones sobre el PC */
+function tarjetaPermiso(plan) {
+  const cont = $("messages");
+  const div = document.createElement("div");
+  div.className = "msg permiso";
+
+  const titulos = {
+    ver: "👀 Leer archivo",
+    escribir: "✍️ Escribir archivo",
+    terminal: "💻 Ejecutar comando",
+    apuntes: "🧠 Leer apuntes",
+  };
+  let detalle = "";
+  if (plan.accion === "ver") detalle = esc(String(plan.datos || ""));
+  if (plan.accion === "terminal") detalle = esc(String(plan.datos || ""));
+  if (plan.accion === "escribir" && plan.datos && plan.datos.ruta) {
+    detalle = "RUTA: " + esc(plan.datos.ruta) + "\n\n" + esc(String(plan.datos.contenido || "").slice(0, 400));
+  }
+  if (plan.accion === "apuntes") detalle = "Mostrar los apuntes guardados";
+
+  div.innerHTML = `
+    <div class="permiso-titulo">${titulos[plan.accion] || plan.accion} — ¿lo apruebas?</div>
+    <pre class="permiso-detalle">${detalle || "(sin datos)"}</pre>
+    <div class="permiso-botones">
+      <button class="btn-ok" id="permiso-si">✔ Aprobar</button>
+      <button class="btn-no" id="permiso-no">✖ Rechazar</button>
+    </div>`;
+  cont.appendChild(div);
+  cont.scrollTop = cont.scrollHeight;
+  return div;
+}
+
 async function enviar() {
   const input = $("input");
   const texto = input.value.trim();
@@ -190,28 +223,54 @@ async function enviar() {
   historial.push({ role: "user", content: texto });
   input.value = "";
   redimensionar(input);
+  await pedirRespuesta();
+}
 
+async function pedirRespuesta() {
   const spinner = indicadorEscribiendo();
   $("btn-send").disabled = true;
-
   try {
-    const res = await api("/api/chat", {
-      method: "POST",
-      body: JSON.stringify({ messages: historial }),
-    });
+    const body = { messages: historial };
+    if (pendiente && pendiente.resultado) {
+      body.tool_result = pendiente.resultado;
+      pendiente = null;
+    }
+    const res = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
     spinner.remove();
-    if (res.error) {
-      addMsg("error", "⚠️ " + res.error);
+
+    if (res.tipo === "error") {
+      addMsg("error", "⚠️ " + res.texto);
+    } else if (res.tipo === "permiso") {
+      pendiente = { accion: res.accion, datos: res.datos, resultado: null };
+      const card = tarjetaPermiso(res);
+      card.querySelector("#permiso-si").onclick = async () => {
+        card.remove();
+        const ejec = await api("/api/pc/ejecutar", {
+          method: "POST",
+          body: JSON.stringify({ accion: res.accion, datos: res.datos }),
+        });
+        historial.push({ role: "assistant", content: res.texto });
+        pendiente = { resultado: ejec.resultado };
+        addMsg("toolnote", "✔ Acción aprobada y ejecutada.");
+        await pedirRespuesta();
+      };
+      card.querySelector("#permiso-no").onclick = async () => {
+        card.remove();
+        historial.push({ role: "assistant", content: res.texto });
+        pendiente = { resultado: "El usuario RECHAZÓ la acción. No la ejecutes. Pregúntale si quiere otra cosa." };
+        addMsg("toolnote", "✖ Acción rechazada.");
+        await pedirRespuesta();
+      };
     } else {
-      addMsg("assistant", res.respuesta);
-      historial.push({ role: "assistant", content: res.respuesta });
+      addMsg("assistant", res.texto);
+      historial.push({ role: "assistant", content: res.texto });
     }
   } catch (e) {
     spinner.remove();
     addMsg("error", "⚠️ No se pudo conectar con el servidor. ¿Está arrancado?");
   } finally {
     $("btn-send").disabled = false;
-    input.focus();
+    $("input").focus();
   }
 }
 
@@ -234,6 +293,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("btn-nueva").onclick = () => {
     historial = [];
+    pendiente = null;
     $("messages").innerHTML = "";
     addMsg("assistant", "Nueva conversación. ¿En qué te ayudo?");
   };
@@ -253,7 +313,25 @@ document.addEventListener("DOMContentLoaded", () => {
     toast("Memoria borrada");
   };
 
+  $("btn-custom").onclick = async () => {
+    const modelos = $("custom-modelos").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    await api("/api/custom", {
+      method: "POST",
+      body: JSON.stringify({ base_url: $("custom-url").value.trim(), modelos }),
+    });
+    toast("Proveedor personalizado guardado");
+    await cargarEstado();
+  };
+
+  $("btn-pc-config").onclick = async () => {
+    await api("/api/pc/config", {
+      method: "POST",
+      body: JSON.stringify({ carpeta_extra: $("pc-carpeta").value.trim() }),
+    });
+    toast("Carpeta permitida guardada");
+  };
+
   cargarEstado().then(() => {
-    addMsg("assistant", "¡Hola! Soy MiClaw 🦞\n\nEscribe tu primer mensaje. Recuerda que puedes pedirme buscar en internet (por ejemplo: «busca en internet las mejores ofertas de portátiles») o guardar notas («recuerda que mi cumpleaños es el 3 de mayo»).");
+    addMsg("assistant", "¡Hola! Soy MiClaw 🦞\n\nPuedo chatear contigo, buscar en internet, guardar notas, y también tocar tu PC (leer/escribir archivos, ejecutar comandos) — siempre pidiéndote permiso antes.\n\nPrueba: «busca en internet…», «recuerda que…», «mira qué hay en mi carpeta Descargas», «crea un archivo notas.txt con una lista de la compra».");
   });
 });
