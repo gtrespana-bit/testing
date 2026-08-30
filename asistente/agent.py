@@ -14,12 +14,15 @@ Flujo de cada mensaje del usuario:
   5. La respuesta final es lo que ve el usuario.
 """
 
+import datetime
 import re
 
 from . import config, pc, providers, tools
 
 SYSTEM_PROMPT = """Eres MiClaw, un asistente personal que corre en el ordenador de su dueño.
 Respondes en el idioma del usuario (normalmente español), de forma clara y útil.
+
+HOY ES: {hoy} (usa esta fecha si necesitas saber qué día es).
 
 TIENES HERRAMIENTAS. Si la petición encaja con alguna, responde SOLO con
 la línea exacta (nada más, sin comillas ni explicaciones):
@@ -57,6 +60,7 @@ def _build_system_prompt():
     if not contenido:
         contenido = "(vacía)"
     return SYSTEM_PROMPT.format(
+        hoy=datetime.date.today().isoformat(),
         formato=_formato_herramientas(),
         memoria=contenido,
     )

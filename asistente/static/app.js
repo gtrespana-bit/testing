@@ -1,10 +1,15 @@
-/* MiClaw — frontend */
+/* ============================================================
+   MiClaw — frontend premium
+   ============================================================ */
+"use strict";
 
 const $ = (id) => document.getElementById(id);
 
 let estado = null;
 let historial = [];
-let pendiente = null;   // plan de acción sobre el PC esperando aprobación
+let chatId = null;          // id de la conversación actual (null = nueva sin guardar)
+let pendiente = null;       // plan de acción sobre el PC esperando aprobación
+let ocupado = false;        // hay una petición en curso
 
 /* ---------------- utilidades ---------------- */
 
@@ -17,57 +22,479 @@ async function api(path, opts = {}) {
 }
 
 function toast(msg) {
-  const t = $("toast") || (() => {
-    const el = document.createElement("div");
-    el.id = "toast";
-    el.className = "toast";
-    document.body.appendChild(el);
-    return el;
-  })();
+  const t = $("toast");
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove("show"), 3000);
+  t._timer = setTimeout(() => t.classList.remove("show"), 2800);
 }
 
 function esc(s) {
   const d = document.createElement("div");
-  d.textContent = s;
+  d.textContent = String(s ?? "");
   return d.innerHTML;
 }
 
-/* ---------------- estado / navegación ---------------- */
-
-function switchView(vista) {
-  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
-  $("view-" + vista).classList.add("active");
-  document.querySelector(`.nav-btn[data-view="${vista}"]`).classList.add("active");
+function ahora() {
+  return new Date().toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
 }
 
-async function cargarEstado() {
-  estado = await api("/api/estado");
-  pintarProveedores();
-  pintarModelos();
-  pintarClaves();
-  pintarCajaProveedor();
-  pintarCustom();
-  $("pc-carpeta").value = estado.pc.carpeta_extra || "";
+function fechaRelativa(iso) {
+  if (!iso) return "";
+  const d = new Date(iso.replace(" ", "T"));
+  const hoy = new Date();
+  const ayer = new Date(hoy.getTime() - 864e5);
+  if (d.toDateString() === hoy.toDateString()) return "hoy " + d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === ayer.toDateString()) return "ayer";
+  return d.toLocaleDateString("es", { day: "numeric", month: "short" });
 }
+
+function scrollBottom() {
+  const m = $("messages");
+  m.scrollTop = m.scrollHeight;
+}
+
+/* ---------------- markdown (renderizador ligero y seguro) ---------------- */
+
+function mdInline(s) {
+  let t = esc(s);
+  t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  t = t.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
+  t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return t;
+}
+
+function mdCodeBlock(lang, code) {
+  const id = "cb" + Math.random().toString(36).slice(2, 9);
+  return `<div class="codeblock"><div class="codehead"><span>${esc(lang || "código")}</span>` +
+    `<button class="copy-btn" data-cb="${id}">⧉ Copiar</button></div>` +
+    `<pre id="${id}"><code>${esc(code)}</code></pre></div>`;
+}
+
+function mdTable(rows) {
+  const parse = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => mdInline(c.trim()));
+  const header = parse(rows[0]);
+  const sep = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+  let body = rows.slice(1).filter((r) => !sep.test(r));
+  let h = "<table><thead><tr>" + header.map((c) => `<th>${c}</th>`).join("") + "</tr></thead>";
+  if (body.length) h += "<tbody>" + body.map((r) => "<tr>" + parse(r).map((c) => `<td>${c}</td>`).join("") + "</tr>").join("") + "</tbody>";
+  return h + "</table>";
+}
+
+function renderMarkdown(src) {
+  const lines = String(src || "").replace(/\r\n/g, "\n").split("\n");
+  let html = "", i = 0;
+  let inCode = false, codeLang = "", codeBuf = [];
+  let listTag = null;
+
+  const flushList = () => { if (listTag) { html += `</${listTag}>`; listTag = null; } };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const fence = line.match(/^```(\w*)\s*$/);
+    if (fence) {
+      flushList();
+      if (inCode) { html += mdCodeBlock(codeLang, codeBuf.join("\n")); inCode = false; codeLang = ""; codeBuf = []; }
+      else { inCode = true; codeLang = fence[1] || ""; }
+      i++; continue;
+    }
+    if (inCode) { codeBuf.push(line); i++; continue; }
+
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { flushList(); html += `<h${h[1].length}>${mdInline(h[2])}</h${h[1].length}>`; i++; continue; }
+
+    if (/^\s*(---|\*\*\*+)\s*$/.test(line)) { flushList(); html += "<hr>"; i++; continue; }
+
+    if (line.trim().startsWith("|")) {
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) { rows.push(lines[i]); i++; }
+      flushList();
+      html += mdTable(rows);
+      continue;
+    }
+
+    const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+    const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const tag = ul ? "ul" : "ol";
+      if (listTag !== tag) { flushList(); html += `<${tag}>`; listTag = tag; }
+      html += `<li>${mdInline((ul || ol)[1])}</li>`;
+      i++; continue;
+    }
+    flushList();
+
+    const bq = line.match(/^>\s?(.*)$/);
+    if (bq) { html += `<blockquote>${mdInline(bq[1])}</blockquote>`; i++; continue; }
+
+    if (!line.trim()) { i++; continue; }
+    html += `<p>${mdInline(line)}</p>`;
+    i++;
+  }
+  if (inCode) html += mdCodeBlock(codeLang, codeBuf.join("\n"));
+  flushList();
+  return `<div class="md">${html}</div>`;
+}
+
+/* ---------------- mensajes ---------------- */
+
+function addMsg(role, texto, extra = {}) {
+  const cont = $("messages");
+  const row = document.createElement("div");
+  row.className = "msg-row " + (role === "user" ? "user" : role === "error" ? "assistant error" : role);
+  const avatar = role === "user" ? "👤" : role === "toolnote" ? "📎" : "🦞";
+  row.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-body">
+      <div class="msg-bubble">${esc(texto)}</div>
+      ${role === "assistant" || role === "user" ? `<div class="msg-time">${ahora()}</div>` : ""}
+      ${role === "assistant" ? `<div class="msg-actions">
+          <button class="msg-act" data-act="copy">⧉ Copiar</button>
+          <button class="msg-act" data-act="regen">↻ Regenerar</button>
+        </div>` : ""}
+    </div>`;
+  cont.appendChild(row);
+  cont.scrollTop = cont.scrollHeight;
+  return row;
+}
+
+function addMarkdown(role, texto) {
+  const cont = $("messages");
+  const row = document.createElement("div");
+  row.className = "msg-row " + role;
+  const avatar = role === "user" ? "👤" : "🦞";
+  row.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-body">
+      <div class="msg-bubble"></div>
+      <div class="msg-time">${ahora()}</div>
+      <div class="msg-actions">
+        <button class="msg-act" data-act="copy">⧉ Copiar</button>
+        <button class="msg-act" data-act="regen">↻ Regenerar</button>
+      </div>
+    </div>`;
+  row.querySelector(".msg-bubble").innerHTML = renderMarkdown(texto);
+  row.querySelector(".msg-bubble").classList.add("md");
+  cont.appendChild(row);
+  cont.scrollTop = cont.scrollHeight;
+  return row;
+}
+
+/* máquina de escribir */
+function typewrite(row, texto, done) {
+  const bubble = row.querySelector(".msg-bubble");
+  bubble.classList.add("md");
+  let i = 0;
+  const CH = 3, D = 13;
+  const t = {};
+  const finish = () => {
+    if (!t.id) return;
+    clearInterval(t.id); t.id = null;
+    bubble.innerHTML = renderMarkdown(texto);
+    row.onclick = null;
+    if (done) done();
+    scrollBottom();
+  };
+  t.id = setInterval(() => {
+    i += CH;
+    bubble.textContent = texto.slice(0, i) + "▍";
+    scrollBottom();
+    if (i >= texto.length) finish();
+  }, D);
+  row.onclick = (e) => {
+    if (e.target.closest("a") || e.target.closest("button")) return;
+    finish();
+  };
+}
+
+function mostrarPensando(texto) {
+  const cont = $("messages");
+  const row = document.createElement("div");
+  row.className = "msg-row assistant";
+  row.innerHTML = `
+    <div class="msg-avatar">🦞</div>
+    <div class="msg-body"><div class="thinking">
+      <span class="dots"><span></span><span></span><span></span></span>
+      <span class="thinking-txt">${esc(texto)}</span>
+    </div></div>`;
+  cont.appendChild(row);
+  cont.scrollTop = cont.scrollHeight;
+  return row;
+}
+
+/* tarjeta de permiso (acción sobre el PC) */
+function tarjetaPermiso(plan) {
+  const cont = $("messages");
+  const row = document.createElement("div");
+  row.className = "msg-row assistant permiso";
+  const titulos = {
+    ver: "👀 Leer archivo", escribir: "✍️ Escribir archivo",
+    terminal: "💻 Ejecutar comando", apuntes: "🧠 Leer apuntes",
+  };
+  let detalle = "";
+  if (plan.accion === "ver") detalle = String(plan.datos || "");
+  if (plan.accion === "terminal") detalle = String(plan.datos || "");
+  if (plan.accion === "escribir" && plan.datos && plan.datos.ruta) {
+    detalle = "RUTA: " + plan.datos.ruta + "\n\n" + String(plan.datos.contenido || "").slice(0, 500);
+  }
+  if (plan.accion === "apuntes") detalle = "Mostrar los apuntes guardados";
+  row.innerHTML = `
+    <div class="msg-avatar">🦞</div>
+    <div class="msg-body">
+      <div class="msg-bubble">
+        <div class="permiso-titulo">${titulos[plan.accion] || plan.accion} — ¿lo apruebas?</div>
+        <pre class="permiso-detalle">${esc(detalle || "(sin datos)")}</pre>
+        <div class="permiso-botones">
+          <button class="btn-ok" id="permiso-si">✔ Aprobar</button>
+          <button class="btn-no" id="permiso-no">✖ Rechazar</button>
+        </div>
+      </div>
+    </div>`;
+  cont.appendChild(row);
+  cont.scrollTop = cont.scrollHeight;
+  return row;
+}
+
+/* ---------------- conversaciones ---------------- */
+
+async function cargarListaConversaciones() {
+  const res = await api("/api/conversaciones");
+  pintarListaConversaciones(res.conversaciones || []);
+}
+
+function pintarListaConversaciones(lista) {
+  const cont = $("lista-conversaciones");
+  cont.innerHTML = "";
+  const q = ($("buscar-conv").value || "").toLowerCase();
+  const filtradas = q ? lista.filter((c) => (c.titulo || "").toLowerCase().includes(q)) : lista;
+
+  if (!filtradas.length) {
+    cont.innerHTML = `<div class="empty-state" style="padding:20px 0;font-size:12.5px;">${q ? "Sin resultados" : "Aún no hay conversaciones"}</div>`;
+    return;
+  }
+  for (const c of filtradas) {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (c.id === chatId ? " active" : "");
+    item.innerHTML = `
+      <div class="conv-txt">
+        <div class="conv-titulo">${esc(c.titulo)}</div>
+        <div class="conv-fecha">${fechaRelativa(c.actualizada)}</div>
+      </div>
+      <button class="conv-del" title="Eliminar">✕</button>`;
+    item.onclick = () => cargarConversacion(c.id);
+    item.querySelector(".conv-del").onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm("¿Eliminar esta conversación?")) return;
+      await api("/api/conversaciones/" + c.id, { method: "DELETE" });
+      if (chatId === c.id) nuevaConversacion();
+      else cargarListaConversaciones();
+    };
+    cont.appendChild(item);
+  }
+}
+
+function nuevaConversacion() {
+  chatId = null;
+  historial = [];
+  pendiente = null;
+  $("messages").innerHTML = "";
+  $("welcome").style.display = "flex";
+  $("chat-titulo").textContent = "Nueva conversación";
+  pintarListaConversaciones([]);
+  cargarListaConversaciones();
+  $("input").focus();
+}
+
+async function crearSiHaceFalta() {
+  if (chatId) return;
+  const titulo = historial[0]?.content?.slice(0, 48) || "Nueva conversación";
+  const res = await api("/api/conversaciones", { method: "POST", body: JSON.stringify({ titulo }) });
+  chatId = res.id;
+  $("chat-titulo").textContent = titulo;
+  cargarListaConversaciones();
+}
+
+async function guardarConversacion() {
+  if (!chatId) return;
+  await api("/api/conversaciones/" + chatId, {
+    method: "PUT",
+    body: JSON.stringify({ messages: historial }),
+  });
+  cargarListaConversaciones();
+}
+
+async function cargarConversacion(id) {
+  const d = await api("/api/conversaciones/" + id);
+  if (d.error) { toast("No se pudo cargar la conversación"); return; }
+  chatId = id;
+  historial = d.messages || [];
+  pendiente = null;
+  $("messages").innerHTML = "";
+  $("welcome").style.display = "none";
+  $("chat-titulo").textContent = d.titulo || "Conversación";
+  for (const m of historial) {
+    if (m.role === "user") addMarkdown("user", m.content);
+    else if (m.role === "assistant") addMarkdown("assistant", m.content);
+  }
+  if (!historial.length) $("welcome").style.display = "flex";
+  cargarListaConversaciones();
+  scrollBottom();
+}
+
+/* ---------------- envío de mensajes ---------------- */
+
+async function enviar() {
+  const input = $("input");
+  const texto = input.value.trim();
+  if (!texto || ocupado) return;
+
+  $("welcome").style.display = "none";
+  addMarkdown("user", texto);
+  historial.push({ role: "user", content: texto });
+  input.value = "";
+  autosize(input);
+  await crearSiHaceFalta();
+  guardarConversacion();
+  await pedirRespuesta();
+}
+
+async function pedirRespuesta() {
+  ocupado = true;
+  $("btn-send").disabled = true;
+
+  const prov = estado?.proveedores?.[estado.proveedor];
+  const pensando = mostrarPensando(`Conectando con ${prov?.nombre || estado?.proveedor || "…"}`);
+  const pensarTxt = pensando.querySelector(".thinking-txt");
+  const frases = ["Pensando…", "Consultando…", "Casi listo…"];
+  let fi = 0;
+  const rotador = setInterval(() => {
+    pensarTxt.textContent = frases[fi++ % frases.length];
+  }, 4200);
+
+  try {
+    const body = { messages: historial };
+    if (pendiente && pendiente.resultado !== undefined) {
+      body.tool_result = pendiente.resultado;
+      pendiente = null;
+    }
+    const res = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
+    clearInterval(rotador);
+    pensando.remove();
+
+    if (res.tipo === "error") {
+      addMsg("error", "⚠️ " + res.texto);
+    } else if (res.tipo === "permiso") {
+      pendiente = { accion: res.accion, datos: res.datos };
+      const card = tarjetaPermiso(res);
+      card.querySelector("#permiso-si").onclick = async () => {
+        card.remove();
+        const ejec = await api("/api/pc/ejecutar", {
+          method: "POST",
+          body: JSON.stringify({ accion: res.accion, datos: res.datos }),
+        });
+        historial.push({ role: "assistant", content: res.texto });
+        pendiente = { resultado: ejec.resultado };
+        addMsg("toolnote", "✔ Acción aprobada y ejecutada.");
+        guardarConversacion();
+        await pedirRespuesta();
+      };
+      card.querySelector("#permiso-no").onclick = async () => {
+        card.remove();
+        historial.push({ role: "assistant", content: res.texto });
+        pendiente = { resultado: "El usuario RECHAZÓ la acción. No la ejecutes; pregúntale si quiere otra cosa." };
+        addMsg("toolnote", "✖ Acción rechazada.");
+        guardarConversacion();
+        await pedirRespuesta();
+      };
+    } else {
+      const row = addMarkdown("assistant", "");
+      typewrite(row, res.texto, () => {
+        historial.push({ role: "assistant", content: res.texto });
+        guardarConversacion();
+      });
+      if (!res.texto || !res.texto.trim()) {
+        row.querySelector(".msg-bubble").innerHTML = renderMarkdown("_(sin respuesta)_");
+        historial.push({ role: "assistant", content: "" });
+        guardarConversacion();
+      }
+    }
+  } catch (e) {
+    clearInterval(rotador);
+    pensando.remove();
+    addMsg("error", "⚠️ No se pudo conectar con el servidor. ¿Está arrancado?");
+  } finally {
+    ocupado = false;
+    $("btn-send").disabled = false;
+    $("input").focus();
+  }
+}
+
+function regenerar() {
+  if (ocupado || !historial.length) return;
+  while (historial.length && historial[historial.length - 1].role === "assistant") historial.pop();
+  const cont = $("messages");
+  while (cont.lastElementChild) {
+    const el = cont.lastElementChild;
+    if (el.classList.contains("msg-row") && el.classList.contains("user")) break;
+    cont.removeChild(el);
+  }
+  guardarConversacion();
+  pedirRespuesta();
+}
+
+/* ---------------- acciones de mensaje (delegadas) ---------------- */
+
+document.addEventListener("click", async (e) => {
+  const act = e.target.closest("[data-act]");
+  if (act) {
+    const row = act.closest(".msg-row");
+    const bubble = row?.querySelector(".msg-bubble");
+    const texto = bubble ? (bubble.textContent || "") : "";
+    if (act.dataset.act === "copy") {
+      try {
+        await navigator.clipboard.writeText(texto);
+        toast("Copiado al portapapeles");
+      } catch {
+        toast("No se pudo copiar");
+      }
+    } else if (act.dataset.act === "regen") {
+      regenerar();
+    }
+    return;
+  }
+  const cb = e.target.closest("[data-cb]");
+  if (cb) {
+    const pre = document.getElementById(cb.dataset.cb);
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      cb.textContent = "✔ Copiado";
+      setTimeout(() => (cb.textContent = "⧉ Copiar"), 1600);
+    } catch {
+      toast("No se pudo copiar");
+    }
+  }
+});
 
 /* ---------------- ajustes ---------------- */
 
 function pintarProveedores() {
   const cont = $("provider-list");
   cont.innerHTML = "";
+  const ICONOS = {
+    ollama: "🦙", gemini: "💎", groq: "🚄", openrouter: "🧭", alibaba: "🦔",
+    mistral: "🌬️", cerebras: "⚡", zai: "🔮", github: "🐙", sambanova: "🧠", custom: "🔧",
+  };
   for (const [pid, info] of Object.entries(estado.proveedores)) {
     const div = document.createElement("div");
     div.className = "provider-item" + (estado.proveedor === pid ? " sel" : "");
     const lista = info.tipo === "clave" ? Boolean(estado.claves[pid]) : true;
     div.innerHTML = `
+      <div class="p-icon">${ICONOS[pid] || "🤖"}</div>
       <h4>${esc(info.nombre)}</h4>
       <p>${esc(info.info)}</p>
-      <span class="badge">${lista ? "✔ listo" : "sin clave"}</span>`;
+      <span class="badge ${lista ? "ok" : "warn"}">${lista ? "✔ listo" : "necesita clave"}</span>`;
     div.onclick = () => seleccionarProveedor(pid);
     cont.appendChild(div);
   }
@@ -81,8 +508,8 @@ function pintarModelos() {
   if (!modelos.length) {
     const opt = document.createElement("option");
     opt.textContent = estado.proveedor === "ollama"
-      ? "(Ollama no responde — ¿lo tienes abierto? Instálalo en ollama.com)"
-      : "(sin modelos disponibles)";
+      ? "(Ollama no responde — instálalo en ollama.com y haz 'ollama pull llama3.2')"
+      : "(sin modelos disponibles — configura el proveedor personalizado)";
     opt.value = "";
     sel.appendChild(opt);
   }
@@ -104,27 +531,28 @@ function pintarModelos() {
 function pintarClaves() {
   const cont = $("key-list");
   cont.innerHTML = "";
+  const NOMBRES = {
+    gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter", alibaba: "Alibaba",
+    mistral: "Mistral", cerebras: "Cerebras", zai: "Z.ai", github: "GitHub",
+    sambanova: "SambaNova", custom: "Personalizado",
+  };
   for (const [pid, info] of Object.entries(estado.proveedores)) {
-    if (info.tipo !== "clave") continue; // ollama es local
+    if (info.tipo !== "clave") continue;
     const row = document.createElement("div");
     row.className = "key-row";
     const tiene = estado.claves[pid];
     row.innerHTML = `
-      <label title="${esc(info.nombre)}">${pid}</label>
-      <input type="password" class="key-input" placeholder="${tiene ? "•••••••• (guardada)" : "pega tu clave aquí"}"
-             data-provider="${pid}">
+      <label title="${esc(info.nombre)}">${NOMBRES[pid] || pid}</label>
+      <input type="password" class="key-input" placeholder="${tiene ? "•••••••• (guardada)" : "pega tu clave aquí"}">
       <button data-save="${pid}">Guardar</button>
-      <span class="key-status ${tiene ? "ok" : ""}" id="ks-${pid}">${tiene ? "✔ guardada" : ""}</span>`;
+      <span class="key-status ${tiene ? "ok" : ""}">${tiene ? "✔ guardada" : ""}</span>`;
     row.querySelector(`[data-save="${pid}"]`).onclick = async () => {
       const input = row.querySelector(".key-input");
       const valor = input.value.trim();
       if (!valor) { toast("Escribe la clave primero"); return; }
       await api("/api/clave", { method: "POST", body: JSON.stringify({ provider: pid, key: valor }) });
       input.value = "";
-      const ks = row.querySelector(".key-status");
-      ks.textContent = "✔ guardada";
-      ks.className = "key-status ok";
-      toast("Clave de " + pid + " guardada");
+      toast("Clave de " + (NOMBRES[pid] || pid) + " guardada");
       await cargarEstado();
     };
     cont.appendChild(row);
@@ -133,21 +561,23 @@ function pintarClaves() {
 
 function pintarCajaProveedor() {
   const info = estado.proveedores[estado.proveedor];
-  $("provider-name").textContent = info ? info.nombre : estado.proveedor;
+  const nombre = info ? info.nombre : estado.proveedor;
+  $("provider-name").textContent = nombre;
   $("provider-model").textContent = estado.modelo || "";
-  $("provider-dot").className = "dot" + (estado.proveedor === "ollama" && estado.ollama_activo ? " on" : "");
+  $("provider-dot").className = "dot" + (estado.proveedor === "ollama" ? (estado.ollama_activo ? " on" : "") : estado.claves[estado.proveedor] ? " on" : "");
+  $("chip-proveedor").textContent = nombre;
+  $("welcome-provider").textContent = nombre;
+  $("card-custom").style.display = estado.proveedor === "custom" ? "" : "none";
 }
 
 function pintarCustom() {
   $("custom-url").value = estado.custom.base_url || "";
   $("custom-modelos").value = (estado.custom.modelos || []).join("\n");
-  $("card-custom").style.display = estado.proveedor === "custom" ? "" : "none";
 }
 
 async function seleccionarProveedor(pid) {
-  const sel = $("select-modelo");
   const modelos = estado.proveedores[pid].modelos;
-  const modelo = modelos.length ? modelos[0].id : (sel.value || "");
+  const modelo = modelos.length ? modelos[0].id : ($("select-modelo").value || "");
   await api("/api/modelo", { method: "POST", body: JSON.stringify({ provider: pid, model: modelo }) });
   estado.proveedor = pid;
   estado.modelo = modelo;
@@ -155,122 +585,26 @@ async function seleccionarProveedor(pid) {
   toast("Proveedor: " + estado.proveedores[pid].nombre);
 }
 
-/* ---------------- chat ---------------- */
-
-function addMsg(role, texto) {
-  const cont = $("messages");
-  const div = document.createElement("div");
-  div.className = "msg " + (role === "user" ? "user" : role === "error" ? "error" : "assistant");
-  div.textContent = texto;
-  cont.appendChild(div);
-  cont.scrollTop = cont.scrollHeight;
-  return div;
-}
-
-function indicadorEscribiendo() {
-  const cont = $("messages");
-  const div = document.createElement("div");
-  div.className = "msg assistant";
-  div.textContent = "…";
-  cont.appendChild(div);
-  cont.scrollTop = cont.scrollHeight;
-  return div;
-}
-
-function redimensionar(textarea) {
-  textarea.style.height = "auto";
-  textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
-}
-
-/* Tarjeta de confirmación para acciones sobre el PC */
-function tarjetaPermiso(plan) {
-  const cont = $("messages");
-  const div = document.createElement("div");
-  div.className = "msg permiso";
-
-  const titulos = {
-    ver: "👀 Leer archivo",
-    escribir: "✍️ Escribir archivo",
-    terminal: "💻 Ejecutar comando",
-    apuntes: "🧠 Leer apuntes",
-  };
-  let detalle = "";
-  if (plan.accion === "ver") detalle = esc(String(plan.datos || ""));
-  if (plan.accion === "terminal") detalle = esc(String(plan.datos || ""));
-  if (plan.accion === "escribir" && plan.datos && plan.datos.ruta) {
-    detalle = "RUTA: " + esc(plan.datos.ruta) + "\n\n" + esc(String(plan.datos.contenido || "").slice(0, 400));
-  }
-  if (plan.accion === "apuntes") detalle = "Mostrar los apuntes guardados";
-
-  div.innerHTML = `
-    <div class="permiso-titulo">${titulos[plan.accion] || plan.accion} — ¿lo apruebas?</div>
-    <pre class="permiso-detalle">${detalle || "(sin datos)"}</pre>
-    <div class="permiso-botones">
-      <button class="btn-ok" id="permiso-si">✔ Aprobar</button>
-      <button class="btn-no" id="permiso-no">✖ Rechazar</button>
-    </div>`;
-  cont.appendChild(div);
-  cont.scrollTop = cont.scrollHeight;
-  return div;
-}
-
-async function enviar() {
-  const input = $("input");
-  const texto = input.value.trim();
-  if (!texto || $("btn-send").disabled) return;
-
-  addMsg("user", texto);
-  historial.push({ role: "user", content: texto });
-  input.value = "";
-  redimensionar(input);
-  await pedirRespuesta();
-}
-
-async function pedirRespuesta() {
-  const spinner = indicadorEscribiendo();
-  $("btn-send").disabled = true;
+async function probarConexion() {
+  const btn = $("btn-probar");
+  const res = $("probar-resultado");
+  btn.disabled = true;
+  res.className = "probar-resultado loading";
+  res.textContent = "Probando…";
   try {
-    const body = { messages: historial };
-    if (pendiente && pendiente.resultado) {
-      body.tool_result = pendiente.resultado;
-      pendiente = null;
-    }
-    const res = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
-    spinner.remove();
-
-    if (res.tipo === "error") {
-      addMsg("error", "⚠️ " + res.texto);
-    } else if (res.tipo === "permiso") {
-      pendiente = { accion: res.accion, datos: res.datos, resultado: null };
-      const card = tarjetaPermiso(res);
-      card.querySelector("#permiso-si").onclick = async () => {
-        card.remove();
-        const ejec = await api("/api/pc/ejecutar", {
-          method: "POST",
-          body: JSON.stringify({ accion: res.accion, datos: res.datos }),
-        });
-        historial.push({ role: "assistant", content: res.texto });
-        pendiente = { resultado: ejec.resultado };
-        addMsg("toolnote", "✔ Acción aprobada y ejecutada.");
-        await pedirRespuesta();
-      };
-      card.querySelector("#permiso-no").onclick = async () => {
-        card.remove();
-        historial.push({ role: "assistant", content: res.texto });
-        pendiente = { resultado: "El usuario RECHAZÓ la acción. No la ejecutes. Pregúntale si quiere otra cosa." };
-        addMsg("toolnote", "✖ Acción rechazada.");
-        await pedirRespuesta();
-      };
+    const r = await api("/api/probar", { method: "POST", body: JSON.stringify({}) });
+    if (r.ok) {
+      res.className = "probar-resultado ok";
+      res.textContent = "✔ Conexión correcta · «" + r.respuesta + "»";
     } else {
-      addMsg("assistant", res.texto);
-      historial.push({ role: "assistant", content: res.texto });
+      res.className = "probar-resultado err";
+      res.textContent = "✖ " + r.error;
     }
-  } catch (e) {
-    spinner.remove();
-    addMsg("error", "⚠️ No se pudo conectar con el servidor. ¿Está arrancado?");
+  } catch {
+    res.className = "probar-resultado err";
+    res.textContent = "✖ Sin conexión con el servidor";
   } finally {
-    $("btn-send").disabled = false;
-    $("input").focus();
+    btn.disabled = false;
   }
 }
 
@@ -278,60 +612,143 @@ async function pedirRespuesta() {
 
 async function cargarMemoria() {
   const res = await api("/api/memoria");
-  $("memoria-contenido").textContent = res.contenido || "(vacía — MiClaw aún no sabe nada de ti)";
+  const cont = $("apuntes-list");
+  cont.innerHTML = "";
+  const apuntes = res.apuntes || [];
+  if (!apuntes.length) {
+    cont.innerHTML = `<div class="empty-state">🧠 Vacía — MiClaw aún no sabe nada de ti.<br>Pídele: «recuerda que…»</div>`;
+    return;
+  }
+  for (const a of apuntes) {
+    const card = document.createElement("div");
+    card.className = "apunte-card";
+    card.innerHTML = `
+      <div class="ap-icon">📝</div>
+      <div class="ap-body">
+        <div class="ap-contenido">${esc(a.contenido)}</div>
+        <div class="ap-fecha">${a.nombre} · ${esc(a.fecha || "")}</div>
+      </div>
+      <button class="ap-del" data-apunte="${a.nombre}">✕</button>`;
+    card.querySelector(".ap-del").onclick = async () => {
+      await api("/api/memoria/" + a.nombre, { method: "DELETE" });
+      cargarMemoria();
+      toast("Apunte borrado");
+    };
+    cont.appendChild(card);
+  }
+}
+
+/* ---------------- exportar ---------------- */
+
+function exportarConversacion() {
+  if (!historial.length) { toast("No hay nada que exportar"); return; }
+  const titulo = $("chat-titulo").textContent || "conversacion";
+  let md = `# ${titulo}\n\n`;
+  for (const m of historial) {
+    md += `**${m.role === "user" ? "Tú" : "MiClaw"}:**\n\n${m.content}\n\n---\n\n`;
+  }
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = titulo.replace(/[^\w\sáéíóúñ-]/gi, "").slice(0, 40) + ".md";
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("Conversación exportada");
+}
+
+/* ---------------- navegación ---------------- */
+
+function switchView(vista) {
+  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
+  $("view-" + vista).classList.add("active");
+  document.querySelector(`.nav-btn[data-view="${vista}"]`)?.classList.add("active");
+  if (vista === "memoria") cargarMemoria();
+  if (vista === "ajustes") cargarEstado();
+}
+
+/* ---------------- estado global ---------------- */
+
+async function cargarEstado() {
+  estado = await api("/api/estado");
+  pintarProveedores();
+  pintarModelos();
+  pintarClaves();
+  pintarCajaProveedor();
+  pintarCustom();
+  $("pc-carpeta").value = estado.pc.carpeta_extra || "";
+  $("toggle-memoria").checked = estado.memoria_incluida !== false;
+}
+
+function autosize(ta) {
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 170) + "px";
 }
 
 /* ---------------- init ---------------- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // navegación
   document.querySelectorAll(".nav-btn").forEach((b) => {
-    b.onclick = () => {
-      switchView(b.dataset.view);
-      if (b.dataset.view === "memoria") cargarMemoria();
+    b.onclick = () => switchView(b.dataset.view);
+  });
+  $("ir-ajustes").onclick = () => switchView("ajustes");
+
+  // conversaciones
+  $("btn-nueva").onclick = nuevaConversacion;
+  $("buscar-conv").addEventListener("input", () => cargarListaConversaciones());
+
+  // chat
+  $("chat-form").onsubmit = (e) => { e.preventDefault(); enviar(); };
+  const ta = $("input");
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); enviar(); }
+  });
+  ta.addEventListener("input", () => autosize(ta));
+  $("btn-exportar").onclick = exportarConversacion;
+
+  // chips de bienvenida
+  document.querySelectorAll(".chip-sug").forEach((ch) => {
+    ch.onclick = () => {
+      $("input").value = ch.dataset.s;
+      enviar();
     };
   });
 
-  $("btn-nueva").onclick = () => {
-    historial = [];
-    pendiente = null;
-    $("messages").innerHTML = "";
-    addMsg("assistant", "Nueva conversación. ¿En qué te ayudo?");
+  // ajustes
+  $("btn-probar").onclick = probarConexion;
+  $("btn-custom").onclick = async () => {
+    const modelos = $("custom-modelos").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    await api("/api/custom", { method: "POST", body: JSON.stringify({ base_url: $("custom-url").value.trim(), modelos }) });
+    toast("Proveedor personalizado guardado");
+    await cargarEstado();
+  };
+  $("btn-pc-config").onclick = async () => {
+    await api("/api/pc/config", { method: "POST", body: JSON.stringify({ carpeta_extra: $("pc-carpeta").value.trim() }) });
+    toast("Carpeta permitida guardada");
+  };
+  $("toggle-memoria").onchange = async () => {
+    await api("/api/config", { method: "POST", body: JSON.stringify({ memoria_incluida: $("toggle-memoria").checked }) });
+    toast($("toggle-memoria").checked ? "Memoria activada" : "Memoria desactivada");
   };
 
-  $("chat-form").onsubmit = (e) => { e.preventDefault(); enviar(); };
-
-  const ta = $("input");
-  ta.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
-  });
-  ta.addEventListener("input", () => redimensionar(ta));
-
+  // memoria
   $("btn-borrar-memoria").onclick = async () => {
-    if (!confirm("¿Seguro que quieres borrar TODA la memoria de MiClaw?")) return;
+    if (!confirm("¿Seguro que quieres borrar TODA la memoria?")) return;
     await api("/api/memoria", { method: "DELETE" });
     cargarMemoria();
     toast("Memoria borrada");
   };
 
-  $("btn-custom").onclick = async () => {
-    const modelos = $("custom-modelos").value.split("\n").map((s) => s.trim()).filter(Boolean);
-    await api("/api/custom", {
-      method: "POST",
-      body: JSON.stringify({ base_url: $("custom-url").value.trim(), modelos }),
-    });
-    toast("Proveedor personalizado guardado");
-    await cargarEstado();
-  };
-
-  $("btn-pc-config").onclick = async () => {
-    await api("/api/pc/config", {
-      method: "POST",
-      body: JSON.stringify({ carpeta_extra: $("pc-carpeta").value.trim() }),
-    });
-    toast("Carpeta permitida guardada");
-  };
-
-  cargarEstado().then(() => {
-    addMsg("assistant", "¡Hola! Soy MiClaw 🦞\n\nPuedo chatear contigo, buscar en internet, guardar notas, y también tocar tu PC (leer/escribir archivos, ejecutar comandos) — siempre pidiéndote permiso antes.\n\nPrueba: «busca en internet…», «recuerda que…», «mira qué hay en mi carpeta Descargas», «crea un archivo notas.txt con una lista de la compra».");
+  // atajos de teclado
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") { e.preventDefault(); nuevaConversacion(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); switchView("ajustes"); }
   });
+
+  // arranque
+  cargarEstado();
+  cargarListaConversaciones();
+  $("input").focus();
 });

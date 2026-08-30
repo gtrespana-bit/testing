@@ -7,99 +7,144 @@
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+<div class="bg-orbs" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+
 <div class="app">
-  <aside class="sidebar" id="sidebar">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
     <div class="brand">
-      <span class="logo">🦞</span>
-      <div>
+      <div class="brand-logo">🦞</div>
+      <div class="brand-text">
         <h1>MiClaw</h1>
-        <p class="tagline">tu IA, en tu PC</p>
+        <span class="version">v1.0 · premium</span>
       </div>
     </div>
 
-    <nav>
-      <button class="nav-btn active" data-view="chat">💬 Chat</button>
+    <button class="new-chat-btn" id="btn-nueva">✚ Nueva conversación</button>
+
+    <div class="search-box">
+      <input type="text" id="buscar-conv" placeholder="Buscar conversaciones…">
+    </div>
+
+    <div class="conv-list" id="lista-conversaciones"></div>
+
+    <div class="sidebar-bottom">
+      <button class="nav-btn" data-view="chat">💬 Chat</button>
       <button class="nav-btn" data-view="ajustes">⚙️ Ajustes</button>
       <button class="nav-btn" data-view="memoria">🧠 Memoria</button>
-    </nav>
 
-    <div class="provider-box" id="provider-box">
-      <span class="dot" id="provider-dot"></span>
-      <div>
-        <strong id="provider-name">—</strong>
-        <span id="provider-model">—</span>
+      <div class="provider-mini" id="provider-box" title="Proveedor activo">
+        <span class="dot" id="provider-dot"></span>
+        <div class="provider-mini-text">
+          <strong id="provider-name">—</strong>
+          <span id="provider-model">—</span>
+        </div>
       </div>
-    </div>
-
-    <div class="sidebar-footer">
-      <p>100% local. Tus datos y claves nunca salen de este ordenador.</p>
+      <p class="privacy-note">🔒 100% local · tus datos y claves no salen de este PC</p>
     </div>
   </aside>
 
+  <!-- ================= CONTENIDO ================= -->
   <main class="content">
-    <!-- CHAT -->
+
+    <!-- ---------- CHAT ---------- -->
     <section id="view-chat" class="view active">
-      <div class="chat-header">
-        <h2>Conversación</h2>
-        <button class="ghost-btn" id="btn-nueva">＋ Nueva</button>
+      <header class="chat-top">
+        <div class="chat-title-wrap">
+          <h2 id="chat-titulo">Nueva conversación</h2>
+          <span class="chip" id="chip-proveedor"></span>
+        </div>
+        <div class="chat-top-actions">
+          <button class="icon-btn" id="btn-exportar" title="Exportar conversación (Markdown)">⬇</button>
+        </div>
+      </header>
+
+      <div id="welcome" class="welcome">
+        <div class="welcome-logo">🦞</div>
+        <h1>Hola, soy MiClaw</h1>
+        <p>Tu asistente personal: chateo contigo, busco en internet, <br>guardo tus notas y trabajo con tu PC — siempre con tu permiso.</p>
+        <div class="chips">
+          <button class="chip-sug" data-s="busca en internet las noticias de tecnología de hoy">🔍 Busca noticias de hoy</button>
+          <button class="chip-sug" data-s="recuerda que mi color favorito es el verde">🧠 Guárdame un dato</button>
+          <button class="chip-sug" data-s="lee el archivo README.md del proyecto y resúmelo">📄 Resume mi archivo</button>
+          <button class="chip-sug" data-s="¿cuánto espacio libre tiene mi disco?">💻 Mira mi disco</button>
+        </div>
+        <p class="welcome-hint">Proveedor actual: <span id="welcome-provider">—</span> · cámbialo en <button class="linklike" id="ir-ajustes">Ajustes</button></p>
       </div>
+
       <div id="messages" class="messages"></div>
+
       <form id="chat-form" class="composer" autocomplete="off">
-        <textarea id="input" rows="1" placeholder="Escribe tu mensaje… (Enter para enviar, Shift+Enter salto de línea)"></textarea>
-        <button type="submit" id="btn-send">Enviar</button>
+        <textarea id="input" rows="1" placeholder="Escribe tu mensaje…  (Enter enviar · Shift+Enter salto)"></textarea>
+        <button type="submit" id="btn-send" title="Enviar">➤</button>
       </form>
     </section>
 
-    <!-- AJUSTES -->
-    <section id="view-ajustes" class="view">
-      <h2>Ajustes</h2>
+    <!-- ---------- AJUSTES ---------- -->
+    <section id="view-ajustes" class="view scroll-view">
+      <div class="view-head">
+        <h2>⚙️ Ajustes</h2>
+        <p class="hint">Todo gratuito y sin tarjeta. Cambia de proveedor cuando quieras — en un clic.</p>
+      </div>
 
       <div class="card">
-        <h3>1 · Elige tu proveedor de IA</h3>
-        <p class="hint">Todos gratuitos (2026): Ollama local, Gemini, Groq, OpenRouter, <strong>Alibaba Qwen (prueba gratis de 1M tokens)</strong>, Mistral, Cerebras, Z.ai, GitHub Models, SambaNova… o un proveedor personalizado.</p>
+        <h3>1 · Proveedor de IA</h3>
         <div id="provider-list" class="provider-list"></div>
       </div>
 
       <div class="card" id="card-modelo">
         <h3>2 · Modelo</h3>
         <select id="select-modelo"></select>
+        <button class="btn-primary" id="btn-probar">⚡ Probar conexión</button>
+        <span id="probar-resultado" class="probar-resultado"></span>
       </div>
 
       <div class="card" id="card-custom" style="display:none">
         <h3>2b · Proveedor personalizado (cualquier API compatible con OpenAI)</h3>
-        <p class="hint">Pon la URL base (sin /chat/completions), p.ej. https://mi-servidor.com/v1 — y la lista de modelos, uno por línea. Funciona con LM Studio, vLLM y otros.</p>
+        <p class="hint">Pon la URL base (sin /chat/completions) y la lista de modelos, uno por línea. Funciona con LM Studio, vLLM y otros.</p>
         <label class="mini-label" for="custom-url">URL base</label>
-        <input type="text" id="custom-url" placeholder="https://…/v1">
+        <input type="text" id="custom-url" placeholder="https://mi-servidor.com/v1">
         <label class="mini-label" for="custom-modelos">Modelos (uno por línea)</label>
         <textarea id="custom-modelos" rows="4" placeholder="mi-modelo-1&#10;mi-modelo-2"></textarea>
-        <button class="btn-primary" id="btn-custom">Guardar personalizado</button>
+        <button class="btn-primary" id="btn-custom">💾 Guardar personalizado</button>
       </div>
 
       <div class="card">
         <h3>3 · Claves API</h3>
-        <p class="hint">Cada proveedor necesita su clave. Se guardan solo en tu PC (data/config.json). Sin tarjeta.</p>
+        <p class="hint">Cada proveedor necesita su clave. Se guardan solo en tu PC (data/config.json).</p>
         <div id="key-list"></div>
       </div>
 
       <div class="card">
         <h3>4 · Acceso a tu PC</h3>
-        <p class="hint">MiClaw puede leer/escribir archivos y ejecutar comandos en tu ordenador. <strong>Nunca ejecuta nada sin tu confirmación.</strong> Por defecto solo puede tocar tu carpeta de usuario y la del proyecto.</p>
+        <p class="hint">MiClaw puede leer/escribir archivos y ejecutar comandos. <strong>Nunca ejecuta nada sin tu confirmación.</strong> Por defecto solo puede tocar tu carpeta de usuario y la del proyecto.</p>
         <label class="mini-label" for="pc-carpeta">Carpeta extra permitida (opcional)</label>
         <input type="text" id="pc-carpeta" placeholder="C:\Users\TuNombre\Documentos  o  /home/tu/Proyectos">
-        <button class="btn-primary" id="btn-pc-config">Guardar</button>
+        <button class="btn-primary" id="btn-pc-config">💾 Guardar carpeta</button>
+      </div>
+
+      <div class="card">
+        <h3>5 · Preferencias</h3>
+        <label class="toggle-row">
+          <input type="checkbox" id="toggle-memoria">
+          <span>Usar la memoria (apuntes) en las conversaciones</span>
+        </label>
       </div>
     </section>
 
-    <!-- MEMORIA -->
-    <section id="view-memoria" class="view">
-      <h2>Memoria</h2>
-      <p class="hint">Apuntes que MiClaw guarda sobre ti y consulta en cada conversación. Todo en tu disco.</p>
-      <pre id="memoria-contenido" class="memoria-box"></pre>
+    <!-- ---------- MEMORIA ---------- -->
+    <section id="view-memoria" class="view scroll-view">
+      <div class="view-head">
+        <h2>🧠 Memoria</h2>
+        <p class="hint">Apuntes que MiClaw guarda sobre ti y consulta en cada conversación. Todo en tu disco.</p>
+      </div>
+      <div id="apuntes-list" class="apuntes-list"></div>
       <button class="danger-btn" id="btn-borrar-memoria">🗑 Borrar toda la memoria</button>
     </section>
   </main>
 </div>
 
+<div id="toast" class="toast"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

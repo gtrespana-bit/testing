@@ -203,9 +203,11 @@ def _ollama_list_models():
         return []
 
 
-def ollama_chat(model, messages):
+def ollama_chat(model, messages, max_tokens=None, timeout=TIMEOUT):
     payload = {"model": model, "messages": messages, "stream": False}
-    with httpx.Client(timeout=TIMEOUT) as client:
+    if max_tokens:
+        payload["options"] = {"num_predict": max_tokens}
+    with httpx.Client(timeout=timeout) as client:
         try:
             r = client.post(f"{OLLAMA_URL}/api/chat", json=payload)
         except httpx.ConnectError:
@@ -223,11 +225,14 @@ def ollama_chat(model, messages):
 # OpenAI-compatible (Groq, OpenRouter, Alibaba, Mistral, Cerebras, Z.ai,
 # GitHub Models, SambaNova y el proveedor personalizado)
 # ---------------------------------------------------------------------------
-def openai_compatible_chat(provider, base_url, model, messages, api_key):
+def openai_compatible_chat(provider, base_url, model, messages, api_key,
+                           max_tokens=None, timeout=TIMEOUT):
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {"model": model, "messages": messages}
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     url = base_url.rstrip("/") + "/chat/completions"
-    with httpx.Client(timeout=TIMEOUT) as client:
+    with httpx.Client(timeout=timeout) as client:
         try:
             r = client.post(url, json=payload, headers=headers)
         except httpx.ConnectError:
@@ -270,7 +275,7 @@ def openai_compatible_chat(provider, base_url, model, messages, api_key):
 # ---------------------------------------------------------------------------
 # Gemini (Google AI Studio)
 # ---------------------------------------------------------------------------
-def gemini_chat(model, messages, api_key):
+def gemini_chat(model, messages, api_key, max_tokens=None, timeout=TIMEOUT):
     system_parts = [m["content"] for m in messages if m["role"] == "system"]
     rest = [m for m in messages if m["role"] != "system"]
     contents = [
@@ -281,10 +286,12 @@ def gemini_chat(model, messages, api_key):
     payload = {"contents": contents}
     if system_parts:
         payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+    if max_tokens:
+        payload["generationConfig"] = {"maxOutputTokens": max_tokens}
 
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
            f":generateContent?key={api_key}")
-    with httpx.Client(timeout=TIMEOUT) as client:
+    with httpx.Client(timeout=timeout) as client:
         try:
             r = client.post(url, json=payload)
         except httpx.ConnectError:
@@ -316,16 +323,16 @@ def gemini_chat(model, messages, api_key):
 # ---------------------------------------------------------------------------
 # Despacho principal
 # ---------------------------------------------------------------------------
-def chat(provider, model, messages):
+def chat(provider, model, messages, max_tokens=None, timeout=TIMEOUT):
     """Envía la conversación al proveedor elegido y devuelve el texto de respuesta."""
     if provider == "ollama":
-        return ollama_chat(model, messages)
+        return ollama_chat(model, messages, max_tokens, timeout)
 
     if provider == "gemini":
         key = config.get_api_key("gemini")
         if not key:
             raise ProviderError("Falta la clave de Gemini. Añádela en Ajustes → Claves.")
-        return gemini_chat(model, messages, key)
+        return gemini_chat(model, messages, key, max_tokens, timeout)
 
     if provider == "custom":
         c = config.get_custom()
@@ -334,7 +341,8 @@ def chat(provider, model, messages):
         key = config.get_api_key("custom")
         if not key:
             raise ProviderError("Falta la clave del proveedor personalizado. Añádela en Ajustes.")
-        return openai_compatible_chat("personalizado", c["base_url"], model, messages, key)
+        return openai_compatible_chat("personalizado", c["base_url"], model, messages, key,
+                                      max_tokens, timeout)
 
     if provider in OPENAI_BASE:
         key = config.get_api_key(provider)
@@ -345,7 +353,7 @@ def chat(provider, model, messages):
             )
         return openai_compatible_chat(
             PROVIDERS.get(provider, {}).get("nombre", provider),
-            OPENAI_BASE[provider], model, messages, key,
+            OPENAI_BASE[provider], model, messages, key, max_tokens, timeout,
         )
 
     raise ProviderError(f"Proveedor desconocido: {provider}")
