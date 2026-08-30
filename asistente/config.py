@@ -5,6 +5,7 @@ Toda la configuración (claves API, modelo elegido) se guarda en
 data/config.json, en TU ordenador. Nunca sale de ahí.
 """
 
+import hashlib
 import json
 import os
 
@@ -107,3 +108,31 @@ def set_custom(base_url, modelos):
         "modelos": [m.strip() for m in modelos if m.strip()],
     }
     save_config(cfg)
+
+
+# ---------------------------------------------------------------------------
+# PIN de acceso (multi-dispositivo). Se guarda solo su hash.
+# ---------------------------------------------------------------------------
+PIN_SALT = "miclaw::pin::v1"
+
+
+def set_pin(pin):
+    """Activa el PIN (cadena) o lo desactiva si se pasa vacío."""
+    cfg = load_config()
+    pin = (pin or "").strip()
+    if pin:
+        cfg["pin_hash"] = hashlib.sha256((PIN_SALT + pin).encode()).hexdigest()
+    else:
+        cfg.pop("pin_hash", None)
+    save_config(cfg)
+
+
+def pin_activo():
+    return bool(load_config().get("pin_hash"))
+
+
+def verificar_pin(pin):
+    h = load_config().get("pin_hash")
+    if not h:
+        return True
+    return h == hashlib.sha256((PIN_SALT + (pin or "")).encode()).hexdigest()

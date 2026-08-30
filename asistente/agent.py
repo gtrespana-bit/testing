@@ -84,6 +84,9 @@ REGLAS DE USO:
   y volver a probar con "depurar" hasta que funcione.
 - "informe": Úsala para guardar un resumen/informe como archivo Markdown.
   Formato: @@TOOL:informe@@\\n{{título}} | {{contenido en markdown}}
+- "captura": Úsala cuando el usuario pida ver su pantalla o capturarla
+  ("mira mi pantalla", "captura la pantalla"). Requiere aprobación del usuario
+  y un modelo con visión (Gemini, Qwen-VL, etc.).
 - "ver"/"escribir"/"terminal"/"listar"/"buscar"/"documento": acciones sobre el
   PC del usuario. El usuario DEBE aprobar cada una desde la interfaz; cuando la
   apruebe, verás el resultado como un mensaje "tool" y podrás continuar. Puedes
@@ -182,6 +185,19 @@ def responder(history, provider=None, model=None, tool_result=None, max_tool_rou
 
         # herramienta automática: se ejecuta y se sigue
         resultado = tools.ejecutar(tid, arg)
+        if resultado.startswith("@@IMAGEN@@"):
+            # la herramienta devolvió una imagen (captura de pantalla):
+            # se inyecta como mensaje con visión para que el modelo la analice
+            partes = resultado.split("\n", 2)
+            datauri = partes[1] if len(partes) > 1 else ""
+            nota = partes[2] if len(partes) > 2 else ""
+            messages.append({"role": "assistant", "content": texto})
+            messages.append({
+                "role": "user",
+                "content": "[Captura de pantalla tomada. Analízala y responde.] " + nota,
+                "imagen": datauri,
+            })
+            continue
         messages.append({"role": "assistant", "content": texto})
         messages.append({
             "role": "tool",
@@ -250,6 +266,17 @@ def responder_stream(history, provider=None, model=None, tool_result=None, max_t
         nombre = next((t["nombre"] for t in tools.TOOLS if t["id"] == tid), tid)
         yield {"tipo": "tool", "id": tid, "nombre": nombre}
         resultado = tools.ejecutar(tid, arg)
+        if resultado.startswith("@@IMAGEN@@"):
+            partes = resultado.split("\n", 2)
+            datauri = partes[1] if len(partes) > 1 else ""
+            nota = partes[2] if len(partes) > 2 else ""
+            messages.append({"role": "assistant", "content": texto})
+            messages.append({
+                "role": "user",
+                "content": "[Captura de pantalla tomada. Analízala y responde.] " + nota,
+                "imagen": datauri,
+            })
+            continue
         messages.append({"role": "assistant", "content": texto})
         messages.append({
             "role": "tool",

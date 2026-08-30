@@ -595,3 +595,35 @@ body::after {
   white-space: pre-wrap; color: var(--text);
 }
 .informe-btns { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ---------- pantalla de bloqueo (PIN) ---------- */
+.lock {
+  position: fixed; inset: 0; z-index: 220;
+  background: radial-gradient(circle at 50% 40%, rgba(124,92,255,.18), #070910 60%);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.lock.hidden { display: none; }
+.lock-box {
+  width: min(360px, 90vw); background: rgba(17,20,32,.96);
+  border: 1px solid rgba(124,92,255,.5); border-radius: 20px;
+  padding: 28px 26px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.6);
+}
+.lock-icon { font-size: 40px; margin-bottom: 8px; animation: pulse 2.4s infinite; }
+.lock-box h2 { font-size: 20px; margin-bottom: 6px; }
+.lock-box p { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+.lock-box input {
+  text-align: center; font-size: 18px; letter-spacing: .4em; padding: 12px;
+}
+.lock-box .btn-primary { width: 100%; margin-top: 10px; }
+.lock-err { color: var(--err); font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+
+/* ---------- diff visual ---------- */
+.permiso-detalle.diff { padding: 6px 0; overflow-x: auto; }
+.permiso-detalle.diff div {
+  padding: 1px 12px; font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; white-space: pre; line-height: 1.5;
+}
+.diff .add { background: rgba(52,211,153,.13); color: var(--ok); }
+.diff .del { background: rgba(255,107,107,.13); color: var(--err); }
+.diff .meta { color: var(--accent2); font-weight: 700; }

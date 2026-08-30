@@ -14,10 +14,13 @@ El token @@PC:...@@ es el "contrato" entre el agente y la interfaz:
   - @@PC:apuntes@@        → lista de tus apuntes (memoria) — sin permiso
 """
 
+import base64
+import io
 import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from . import config
@@ -172,6 +175,47 @@ def depurar_script(ruta, argumentos=""):
             f"--- CÓDIGO (primeras 200 líneas) ---\n{codigo}")
 
 
+def generar_diff(ruta, contenido_nuevo):
+    """
+    Devuelve un diff unificado (viejo → nuevo) para mostrar ANTES de aprobar
+    una escritura sobre un archivo existente. "(archivo nuevo)" si no existe.
+    """
+    import difflib
+    path = Path(ruta).expanduser()
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            viejo = f.read().splitlines()
+    except (FileNotFoundError, OSError):
+        return "(archivo nuevo)"
+    nuevo = contenido_nuevo.splitlines()
+    diff = difflib.unified_diff(viejo, nuevo,
+                                fromfile=str(path), tofile="(nuevo)", lineterm="")
+    return "\n".join(diff)
+
+
+def capturar_pantalla():
+    """
+    Captura la pantalla principal (requiere sesión de escritorio activa).
+    Devuelve el marcador @@IMAGEN@@ + data URI en base64 para que el agente
+    con visión la analice, y guarda la imagen en data/capturas/.
+    """
+    try:
+        from PIL import ImageGrab
+        cap_dir = os.path.join(config.DATA_DIR, "capturas")
+        os.makedirs(cap_dir, exist_ok=True)
+        img = ImageGrab.grab()
+        img.thumbnail((1280, 1280))  # limitar tamaño para no saturar el contexto
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        nombre = f"cap-{time.strftime('%Y%m%d-%H%M%S')}.png"
+        ruta = os.path.join(cap_dir, nombre)
+        img.save(ruta)
+        return f"@@IMAGEN@@\ndata:image/png;base64,{b64}\nCaptura guardada también en {ruta}"
+    except Exception as e:
+        return f"No pude capturar la pantalla: {e} (¿hay un escritorio activo? En servidores sin pantalla no funciona)"
+
+
 def leer_documento(ruta):
     path = Path(ruta).expanduser()
     if not path.is_file():
@@ -263,7 +307,7 @@ def parsear(texto):
     accion = token[3:].strip()
     resto = texto[fin + 2:].strip()
     if accion not in ("ver", "escribir", "terminal", "apuntes", "listar",
-                      "buscar", "documento", "depurar"):
+                      "buscar", "documento", "depurar", "captura"):
         return None, None
 
     if accion == "ver":
@@ -286,6 +330,9 @@ def parsear(texto):
         if ruta is None and not arg:
             ruta = resto.strip()
         return accion, {"ruta": ruta, "arg": arg}
+
+    if accion == "captura":
+        return accion, None
 
     if accion == "buscar":
         ruta, texto = None, None
@@ -349,6 +396,8 @@ def ejecutar(accion, datos):
         if not datos or not datos.get("ruta"):
             return "Falta la ruta del script."
         return depurar_script(datos["ruta"], datos.get("arg", ""))
+    if accion == "captura":
+        return capturar_pantalla()
     return "Acción desconocida."
 
 

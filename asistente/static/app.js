@@ -12,14 +12,33 @@ let pendiente = null;       // plan de acción sobre el PC esperando aprobación
 let ocupado = false;        // hay una petición en curso
 let adjuntosPendientes = []; // adjuntos del mensaje en curso
 let tareasVistas = new Set(); // ids de tareas ya notificadas
+let token = localStorage.getItem("miclaw-token") || "";  // token de acceso (PIN)
+let lockVisible = false;
 
 /* ---------------- utilidades ---------------- */
 
+function headersExtra() {
+  const h = { "Content-Type": "application/json" };
+  if (token) h["X-Miclaw-Token"] = token;
+  return h;
+}
+
+function mostrarLock() {
+  if (lockVisible) return;
+  lockVisible = true;
+  const lock = $("lock");
+  lock.classList.remove("hidden");
+  setTimeout(() => $("lock-pin")?.focus(), 50);
+}
+
+function ocultarLock() {
+  lockVisible = false;
+  $("lock").classList.add("hidden");
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
+  const res = await fetch(path, { headers: headersExtra(), ...opts });
+  if (res.status === 401) { mostrarLock(); throw new Error("PIN requerido"); }
   return res.json();
 }
 
@@ -314,6 +333,7 @@ const TITULOS_PERMISO = {
   terminal: "💻 Ejecutar comando", apuntes: "🧠 Leer apuntes",
   listar: "📁 Listar carpeta", buscar: "🔍 Buscar en archivos",
   documento: "📄 Leer documento", depurar: "🐞 Depurar script",
+  captura: "🖥️ Capturar pantalla",
   lote: "📦 Plan de acción múltiple",
 };
 
@@ -328,7 +348,26 @@ function detallePermiso(accion, datos) {
     return "RUTA: " + datos.ruta + "\n\n" + String(datos.contenido || "").slice(0, 500);
   }
   if (accion === "apuntes") return "Mostrar los apuntes guardados";
+  if (accion === "captura") return "Captura de pantalla del escritorio";
   return "(sin datos)";
+}
+
+/* Muestra el diff (verde/rojo) antes de aprobar una escritura sobre un archivo existente */
+async function cargarDiff(ruta, contenido, pre) {
+  try {
+    const r = await api("/api/pc/diff", {
+      method: "POST",
+      body: JSON.stringify({ ruta, contenido }),
+    });
+    if (!r.diff) return;
+    if (r.diff === "(archivo nuevo)") { pre.textContent = "📄 Archivo nuevo"; return; }
+    pre.classList.add("diff");
+    pre.innerHTML = r.diff.split("\n").map((l) => {
+      const c = l[0];
+      const cls = c === "+" ? "add" : c === "-" ? "del" : c === "@" ? "meta" : "";
+      return `<div class="${cls}">${esc(l) || "&nbsp;"}</div>`;
+    }).join("");
+  } catch { /* sin servidor o PIN */ }
 }
 
 function tarjetaPermiso(plan) {
@@ -367,6 +406,19 @@ function tarjetaPermiso(plan) {
     </div>`;
   cont.appendChild(row);
   scrollBottom();
+
+  // diff visual para escrituras
+  if (plan.accion === "escribir" && plan.datos && plan.datos.ruta) {
+    cargarDiff(plan.datos.ruta, plan.datos.contenido || "", row.querySelector(".permiso-detalle"));
+  }
+  if (plan.accion === "lote" && Array.isArray(plan.datos)) {
+    row.querySelectorAll(".lote-item").forEach((item, i) => {
+      const a = plan.datos[i];
+      if (a && a.accion === "escribir" && a.datos && a.datos.ruta) {
+        cargarDiff(a.datos.ruta, a.datos.contenido || "", item.querySelector(".permiso-detalle"));
+      }
+    });
+  }
   return row;
 }
 
@@ -553,7 +605,7 @@ async function pedirRespuesta() {
     }
     const res = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headersExtra(),
       body: JSON.stringify(body),
     });
     if (!res.ok || !res.body) throw new Error("respuesta no válida");
@@ -1273,6 +1325,22 @@ async function cargarEstado() {
   pintarRag();
   $("pc-carpeta").value = estado.pc.carpeta_extra || "";
   $("toggle-memoria").checked = estado.memoria_incluida !== false;
+  // PIN: estado
+  const pe = $("pin-estado");
+  if (estado.pin_activo) {
+    pe.className = "probar-resultado ok";
+    pe.textContent = "✔ PIN activo";
+  } else {
+    pe.className = "probar-resultado";
+    pe.textContent = "PIN desactivado (acceso libre en tu red local)";
+  }
+  // direcciones IP locales para el móvil
+  try {
+    const red = await api("/api/red");
+    $("red-ips").textContent = red.ips.length
+      ? red.ips.map((ip) => `http://${ip}:${red.puerto}`).join("  ·  ")
+      : "http://[IP-de-tu-PC]:8000";
+  } catch { $("red-ips").textContent = "http://[IP-de-tu-PC]:8000"; }
 }
 
 function autosize(ta) {
@@ -1361,6 +1429,39 @@ document.addEventListener("DOMContentLoaded", () => {
     $("voz-vel-label").textContent = parseFloat($("rango-voz").value).toFixed(2) + "×";
   };
   $("btn-probar-voz").onclick = () => leerTexto("Hola, soy MiClaw. Superinteligencia local activada.");
+
+  // PIN / desbloqueo
+  $("lock-btn").onclick = async () => {
+    const pin = $("lock-pin").value.trim();
+    $("lock-err").textContent = "";
+    try {
+      const r = await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
+      if (r.ok) {
+        token = r.token;
+        localStorage.setItem("miclaw-token", token);
+        ocultarLock();
+        cargarEstado();
+        cargarListaConversaciones();
+        cargarTareas();
+        toast("🔓 Desbloqueado");
+      } else {
+        $("lock-err").textContent = "PIN incorrecto";
+      }
+    } catch {
+      $("lock-err").textContent = "Sin conexión con el servidor";
+    }
+  };
+  $("lock-pin").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("lock-btn").click();
+  });
+
+  $("btn-pin").onclick = async () => {
+    const pin = $("pin-input").value;
+    await api("/api/config", { method: "POST", body: JSON.stringify({ pin }) });
+    $("pin-input").value = "";
+    toast(pin.trim() ? "🔐 PIN activado" : "PIN desactivado");
+    await cargarEstado();
+  };
 
   // ajustes
   $("btn-probar").onclick = probarConexion;

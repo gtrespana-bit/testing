@@ -14,7 +14,7 @@
 <div id="boot" class="boot">
   <div class="boot-core">🦞</div>
   <h1 class="boot-title">MiClaw</h1>
-  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.2</div>
+  <div class="boot-sub">SUPERINTELIGENCIA LOCAL · v1.4</div>
   <div class="boot-bar"><div class="boot-bar-fill" id="boot-fill"></div></div>
   <div class="boot-logs" id="boot-logs"></div>
   <div class="boot-skip" id="boot-skip">tocar para saltar</div>
@@ -27,7 +27,7 @@
       <div class="brand-logo">🦞</div>
       <div class="brand-text">
         <h1>MiClaw</h1>
-        <span class="version">v1.2 · núcleo neuronal</span>
+        <span class="version">v1.4 · núcleo neuronal</span>
       </div>
     </div>
 
@@ -175,6 +175,15 @@
       </div>
 
       <div class="card">
+        <h3>8 · Multi-dispositivo y seguridad 🔐</h3>
+        <p class="hint">Accede desde tu móvil u otro dispositivo en la misma red WiFi con la dirección <strong id="red-ips">(consultando…)</strong>. Opcional: activa un PIN para que nadie use MiClaw sin él.</p>
+        <label class="mini-label" for="pin-input">PIN de acceso (déjalo vacío para desactivar)</label>
+        <input type="password" id="pin-input" placeholder="PIN de 4-8 dígitos" autocomplete="new-password">
+        <button class="btn-primary" id="btn-pin">🔐 Guardar PIN</button>
+        <span id="pin-estado" class="probar-resultado"></span>
+      </div>
+
+      <div class="card">
         <h3>7 · Voz 🎤🔊</h3>
         <p class="hint">MiClaw puede leer sus respuestas en voz alta y tú puedes dictar con el micrófono del chat. Gratis y local (Web Speech).</p>
         <label class="toggle-row">
@@ -233,6 +242,19 @@
       <button class="ghost-btn" id="modal-cerrar">✕ Cerrar</button>
     </div>
     <pre id="modal-content" class="modal-content"></pre>
+  </div>
+</div>
+
+<!-- ============ PANTALLA DE BLOQUEO (PIN) ============ -->
+<div id="lock" class="lock hidden">
+  <div class="lock-box">
+    <div class="lock-icon">🔐</div>
+    <h2>MiClaw protegido</h2>
+    <p>Este asistente tiene PIN de acceso. Introdúcelo para continuar.</p>
+    <input type="password" id="lock-pin" placeholder="PIN de acceso" autocomplete="current-password">
+    <button class="btn-primary" id="lock-btn">Desbloquear</button>
+    <div id="lock-err" class="lock-err"></div>
+    <p class="privacy-note" style="margin-top:10px">🔒 El PIN se guarda con hash en tu PC · nada sale de tu red local</p>
   </div>
 </div>
 

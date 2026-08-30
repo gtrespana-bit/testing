@@ -8,12 +8,14 @@ Todo corre en tu ordenador: el servidor es local y las claves nunca se suben.
 
 import json
 import os
+import secrets
+import socket
 import sys
 import threading
 import time
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,7 +28,24 @@ from .memory import forget_all, listar_apuntes, read_memory  # noqa: E402
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-app = FastAPI(title="MiClaw", version="1.3.0")
+app = FastAPI(title="MiClaw", version="1.4.0")
+
+# ---------------------------------------------------------------------------
+# PIN de acceso (multi-dispositivo). Token con expiración en memoria.
+# ---------------------------------------------------------------------------
+TOKENS = {}  # token -> expira (epoch)
+
+
+@app.middleware("http")
+async def pin_guard(request, call_next):
+    path = request.url.path
+    if path.startswith("/api") and path != "/api/pin":
+        if config.pin_activo():
+            tk = request.headers.get("x-miclaw-token", "")
+            if TOKENS.get(tk, 0) < time.time():
+                return JSONResponse(status_code=401,
+                                    content={"tipo": "error", "texto": "PIN requerido"})
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------- modelos
@@ -64,6 +83,16 @@ class PcConfigBody(BaseModel):
 class ConfigBody(BaseModel):
     memoria_incluida: bool | None = None
     modo: str | None = None
+    pin: str | None = None
+
+
+class PinBody(BaseModel):
+    pin: str
+
+
+class DiffBody(BaseModel):
+    ruta: str
+    contenido: str
 
 
 class ProbarBody(BaseModel):
@@ -117,6 +146,7 @@ def estado():
         },
         "rag": rag.estado(),
         "informes": len(informes.listar()),
+        "pin_activo": config.pin_activo(),
     }
 
 
@@ -186,6 +216,8 @@ def pc_ejecutar(body: PcBody):
             resultado = pc.buscar_en(body.datos.get("ruta", ""), body.datos.get("texto", ""))
         elif body.accion == "documento" and isinstance(body.datos, str):
             resultado = pc.leer_documento(body.datos)
+        elif body.accion == "captura":
+            resultado = pc.capturar_pantalla()
         elif body.accion == "lote" and isinstance(body.datos, list):
             partes = []
             for act in body.datos:
@@ -221,7 +253,39 @@ def guardar_config(body: ConfigBody):
     if body.modo is not None:
         cfg["modo"] = body.modo
     config.save_config(cfg)
+    if body.pin is not None:
+        config.set_pin(body.pin)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- acceso multi-dispositivo
+@app.post("/api/pin")
+def api_pin(body: PinBody):
+    if not config.verificar_pin(body.pin):
+        return {"ok": False}
+    token = secrets.token_hex(24)
+    TOKENS[token] = time.time() + 60 * 60 * 24 * 7  # 7 días
+    return {"ok": True, "token": token}
+
+
+@app.get("/api/red")
+def api_red():
+    """Direcciones IP locales para acceder desde el móvil (misma red WiFi)."""
+    ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ips.add(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip.startswith(("192.168.", "10.", "172.")):
+                ips.add(ip)
+    except Exception:
+        pass
+    return {"ips": sorted(ips), "puerto": 8000}
 
 
 # ---------------------------------------------------------------- conversaciones
@@ -269,6 +333,12 @@ def recordatorios_vencidos():
 @app.delete("/api/recordatorios/{rid}")
 def recordatorios_borrar(rid: str):
     return {"ok": recordatorios.borrar(rid)}
+
+
+@app.post("/api/pc/diff")
+def pc_diff(body: DiffBody):
+    """Diff unificado para mostrar antes de aprobar una escritura."""
+    return {"diff": pc.generar_diff(body.ruta, body.contenido)}
 
 
 # ---------------------------------------------------------------- RAG de código

@@ -4,9 +4,11 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.3 — compañero de programación**: RAG de código (pregunta sobre tus
-> proyectos), bucle de depuración (ejecuta, ve el error, corrige, repite) e
-> informes automáticos en Markdown.
+> **v1.4 — nivel 4**: diff visual antes de cada modificación, captura de
+> pantalla con visión, y acceso multi-dispositivo con PIN.
+>
+> 📘 **Documentación completa para retomar el proyecto (y hacer el PR):**
+> [docs/ESTADO-DEL-PROYECTO.md](docs/ESTADO-DEL-PROYECTO.md)
 
 ## ✨ Qué hace
 
@@ -50,6 +52,13 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 ### Experiencia premium
 - 👁️ **Visión** — adjunta imágenes o archivos al chat (📎 o arrastrando):
   MiClaw los ve (Gemini/Qwen-VL/Ollama multimodal) o lee su texto.
+- 🖥️ **Captura de pantalla** — «mira mi pantalla»: MiClaw la captura (con tu
+  aprobación) y la analiza con un modelo con visión.
+- 📊 **Diff visual** — antes de modificar un archivo existente, te muestra los
+  cambios en verde/rojo para que apruebes con conocimiento.
+- 🔐 **Multi-dispositivo con PIN** — abre MiClaw desde tu móvil en la misma red
+  WiFi (`http://IP:8000`, la IP se muestra en Ajustes) y protégelo con un PIN
+  opcional (guardado con hash, token de 7 días).
 - 🤖 **Tareas autónomas** — programa acciones que MiClaw ejecuta SOLO a la hora
   indicada («programa una tarea para mañana a las 9 que busque las noticias»).
   Resultados visibles en Memoria → Tareas, con notificación.

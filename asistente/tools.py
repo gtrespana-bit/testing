@@ -102,6 +102,15 @@ TOOLS = [
         "formato": '@@PC:depurar@@\nRUTA: {script}\nARG: {argumentos opcionales}',
     },
     {
+        "id": "captura",
+        "nombre": "Capturar pantalla",
+        "descripcion": ("Toma una captura de la pantalla del ordenador para que "
+                        "MiClaw la analice (requiere modelo con visión y un "
+                        "escritorio activo). El usuario debe aprobarla."),
+        "tipo": "permiso",
+        "formato": '@@PC:captura@@',
+    },
+    {
         "id": "codigo",
         "nombre": "Buscar en mi código (índice local)",
         "descripcion": ("Responde preguntas sobre el código indexado: «¿dónde "
@@ -179,7 +188,7 @@ def ejecutar(tool_id, argumento):
     if tool_id == "informe":
         return _guardar_informe(argumento)
     if tool_id in ("ver", "escribir", "terminal", "apuntes", "listar", "buscar",
-                   "documento", "depurar"):
+                   "documento", "depurar", "captura"):
         return pc.ejecutar(tool_id, argumento)
     return "Herramienta desconocida."
 
