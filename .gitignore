@@ -1,0 +1,15 @@
+# Datos locales (conversaciones, ajustes, memoria) — tuyos, no se suben
+data/
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / sistema
+.DS_Store
+.idea/
+.vscode/
