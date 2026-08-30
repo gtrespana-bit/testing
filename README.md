@@ -4,8 +4,9 @@ Un asistente estilo **OpenClaw** pero tuyo: corre en tu ordenador, usa modelos d
 IA **gratuitos** (locales o en la nube con plan free) y toda tu información
 (conversaciones, claves, memoria) se queda en tu disco.
 
-> **v1.5**: auto-aprobación opcional (ejecuta comandos y herramientas sin
-> confirmar cada uno), modo rápido para Qwen (sin cadena de pensamiento),
+> **v1.6**: panel de actividad en vivo — ves qué está haciendo MiClaw mientras
+> piensa (pasos, herramientas y su razonamiento), para que nunca parezca que
+> se quedó bloqueado. Incluye auto-aprobación opcional, modo rápido para Qwen
 > y acceso multi-dispositivo con PIN.
 >
 > 📘 **Documentación completa para retomar el proyecto (y hacer el PR):**
@@ -74,6 +75,10 @@ IA **gratuitos** (locales o en la nube con plan free) y toda tu información
   respuesta, tiempo de síntesis y tokens estimados.
 - 🧬 **Red neuronal animada** de fondo + pantalla de arranque estilo IA despertando.
 - ⚡ **Streaming real** — las respuestas aparecen palabra a palabra, en vivo.
+- 🧠 **Panel de actividad en vivo** — mientras MiClaw piensa o ejecuta
+  herramientas, ves en el chat un panel con cada paso (🔍 buscando…,
+  💻 ejecutando…), el tiempo transcurrido y su **razonamiento** (cuando el
+  modelo lo expone). Al terminar queda un resumen desplegable «Cómo lo hice».
 - 🎤 **Voz** — lee respuestas en voz alta (🔊, auto-read, velocidad) y dictado 🎤.
 - ☀️🌙 **Modo claro y oscuro** con un clic.
 - 💾 **Conversaciones guardadas** con historial lateral y búsqueda.

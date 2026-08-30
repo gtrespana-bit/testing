@@ -291,41 +291,135 @@ function addMarkdown(role, texto) {
   return row;
 }
 
-function crearFilaStream() {
+function crearFilaStream(resumen) {
   const cont = $("messages");
   const row = document.createElement("div");
   row.className = "msg-row assistant";
   row.innerHTML = `
     <div class="msg-avatar">🦞</div>
-    <div class="msg-body"><div class="msg-bubble"></div></div>`;
+    <div class="msg-body">
+      ${resumen || ""}
+      <div class="msg-bubble"></div>
+    </div>`;
   cont.appendChild(row);
   scrollBottom();
   return { row, bubble: row.querySelector(".msg-bubble") };
 }
 
-function mostrarPensando() {
+/* Panel de actividad: muestra EN VIVO qué está haciendo MiClaw mientras piensa
+   (pasos, herramientas en ejecución y, si el modelo lo envía, su razonamiento). */
+function crearPanelActividad() {
   const cont = $("messages");
   const row = document.createElement("div");
   row.className = "msg-row assistant";
-  const frases = [
-    "Procesando sinapsis…", "Consultando matriz de conocimiento…",
-    "Analizando contexto…", "Ejecutando herramientas neuronales…",
-    "Sintetizando respuesta…",
-  ];
   row.innerHTML = `
     <div class="msg-avatar">🦞</div>
-    <div class="msg-body"><div class="thinking">
-      <span class="dots"><span></span><span></span><span></span></span>
-      <span class="thinking-txt">${frases[0]}</span>
-    </div></div>`;
+    <div class="msg-body">
+      <div class="actividad">
+        <div class="act-cab">
+          <span class="act-spinner"></span>
+          <span class="act-titulo">Trabajando…</span>
+          <span class="act-tiempo">0.0s</span>
+        </div>
+        <div class="act-pasos"></div>
+        <div class="act-razon hidden">
+          <button class="act-razon-toggle">💭 Lo que piensa ▾</button>
+          <div class="act-razon-cuerpo"></div>
+        </div>
+      </div>
+    </div>`;
   cont.appendChild(row);
   scrollBottom();
-  let fi = 0;
-  const rotador = setInterval(() => {
-    const f = row.querySelector(".thinking-txt");
-    if (f) f.textContent = frases[++fi % frases.length];
-  }, 2600);
-  return { row, rotador };
+
+  const pasosEl = row.querySelector(".act-pasos");
+  const tiempoEl = row.querySelector(".act-tiempo");
+  const razonWrap = row.querySelector(".act-razon");
+  const razonCuerpo = row.querySelector(".act-razon-cuerpo");
+  const razonToggle = row.querySelector(".act-razon-toggle");
+
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    tiempoEl.textContent = ((Date.now() - t0) / 1000).toFixed(1) + "s";
+  }, 100);
+
+  const pasos = [];
+
+  function renderPaso(p, texto) {
+    p.el.className = "act-paso " + p.estado;
+    p.el.querySelector(".act-paso-texto").textContent = texto;
+    p.el.querySelector(".act-paso-detalle").textContent = p.detalle || "";
+  }
+
+  function addPaso(id, texto, estado, detalle) {
+    const el = document.createElement("div");
+    el.className = "act-paso " + (estado || "activo");
+    el.innerHTML = `
+      <span class="act-paso-icon"></span>
+      <div class="act-paso-cuerpo">
+        <div class="act-paso-texto"></div>
+        <div class="act-paso-detalle"></div>
+      </div>`;
+    pasosEl.appendChild(el);
+    const p = { id, el, estado: estado || "activo", texto: texto || "", detalle: detalle || "" };
+    pasos.push(p);
+    renderPaso(p, p.texto);
+    scrollThrottled();
+    return p;
+  }
+
+  function setPaso(id, estado, texto, detalle) {
+    let p = pasos.find((x) => x.id === id);
+    if (!p) p = addPaso(id, texto || id, estado, detalle);
+    else {
+      if (estado) p.estado = estado;
+      if (detalle !== undefined) p.detalle = detalle;
+      p.texto = texto || p.texto;
+      renderPaso(p, p.texto);
+    }
+    scrollThrottled();
+    return p;
+  }
+
+  razonToggle.onclick = () => {
+    const abierta = razonWrap.classList.toggle("abierto");
+    razonToggle.textContent = abierta ? "💭 Lo que piensa ▾" : "💭 Lo que piensa ▸";
+  };
+
+  function pensamiento(texto) {
+    razonWrap.classList.remove("hidden");
+    if (!razonWrap.classList.contains("abierto")) razonWrap.classList.add("abierto");
+    razonToggle.textContent = "💭 Lo que piensa ▾";
+    razonCuerpo.textContent += texto;
+    scrollThrottled();
+  }
+
+  function finalizar() {
+    clearInterval(timer);
+    const seg = ((Date.now() - t0) / 1000).toFixed(1);
+    const relevantes = pasos.filter((p) => p.id !== "inicio");
+    const razon = razonCuerpo.textContent.trim();
+    if (!relevantes.length && !razon) { row.remove(); return ""; }
+    const pasosHtml = relevantes.map((p) =>
+      `<div class="act-resumen-paso">${esc(p.texto)}${p.detalle ? `<span class="act-resumen-detalle">${esc(p.detalle)}</span>` : ""}</div>`
+    ).join("");
+    const html = `
+      <details class="act-resumen"${razon ? " open" : ""}>
+        <summary>⚙️ Cómo lo hice · ${seg}s</summary>
+        <div class="act-resumen-body">
+          ${pasosHtml}
+          ${razon ? `<div class="act-resumen-razon">${esc(razon)}</div>` : ""}
+        </div>
+      </details>`;
+    row.remove();
+    return html;
+  }
+
+  function quitar() {
+    clearInterval(timer);
+    row.remove();
+  }
+
+  return { row, addPaso, setPaso, pensamiento, finalizar, quitar };
 }
 
 const TITULOS_PERMISO = {
@@ -335,6 +429,13 @@ const TITULOS_PERMISO = {
   documento: "📄 Leer documento", depurar: "🐞 Depurar script",
   captura: "🖥️ Capturar pantalla",
   lote: "📦 Plan de acción múltiple",
+};
+
+const ICONO_TOOL = {
+  web: "🔍", nota: "📝", calc: "🧮", recordatorio: "⏰", tarea: "🤖",
+  clima: "🌤️", codigo: "🧠", informe: "📊", apuntes: "🧠",
+  ver: "👀", escribir: "✍️", terminal: "💻", listar: "📁",
+  buscar: "🔍", documento: "📄", depurar: "🐞", captura: "🖥️",
 };
 
 function detallePermiso(accion, datos) {
@@ -587,11 +688,7 @@ async function pedirRespuesta() {
   ocupado = true;
   $("btn-send").disabled = true;
 
-  const pensando = mostrarPensando();
-  const quitarPensando = () => {
-    if (document.body.contains(pensando.row)) pensando.row.remove();
-    clearInterval(pensando.rotador);
-  };
+  const panel = crearPanelActividad();
 
   let fila = null;
   let acumulado = "";
@@ -626,18 +723,29 @@ async function pedirRespuesta() {
         let ev;
         try { ev = JSON.parse(line); } catch { continue; }
 
-        if (ev.tipo === "token") {
-          if (!fila) { quitarPensando(); fila = crearFilaStream(); }
+        if (ev.tipo === "paso") {
+          panel.addPaso("inicio", (ev.icono || "🧠") + " " + (ev.texto || "Pensando…"), "activo");
+        } else if (ev.tipo === "pensamiento") {
+          panel.pensamiento(ev.texto || "");
+        } else if (ev.tipo === "token") {
+          if (!fila) {
+            const resumen = panel.finalizar();
+            fila = crearFilaStream(resumen);
+          }
           acumulado += ev.texto;
           fila.bubble.textContent = acumulado + "▍";
           scrollThrottled();
         } else if (ev.tipo === "tool") {
-          if (fila) { fila.row.remove(); fila = null; }
-          acumulado = "";
-          addMsg("toolnote", "🔧 He usado la herramienta «" + (ev.nombre || ev.id) + "»");
+          const icono = ICONO_TOOL[ev.id] || "🔧";
+          panel.setPaso("inicio", "hecho");
+          panel.setPaso("tool-" + ev.id, "activo", icono + " " + (ev.nombre || ev.id));
+        } else if (ev.tipo === "tool_done") {
+          const icono = ICONO_TOOL[ev.id] || "🔧";
+          panel.setPaso("tool-" + ev.id, "hecho", icono + " " + (ev.nombre || ev.id), ev.resumen || "");
         } else if (ev.tipo === "permiso") {
           if (fila) { fila.row.remove(); fila = null; }
           acumulado = "";
+          panel.quitar();
           pendiente = { accion: ev.accion, datos: ev.datos };
           const card = tarjetaPermiso(ev);
           card.querySelector("#permiso-si").onclick = async () => {
@@ -672,6 +780,7 @@ async function pedirRespuesta() {
           finalizado = true;
         } else if (ev.tipo === "error") {
           if (fila) { fila.row.remove(); fila = null; }
+          panel.quitar();
           addMsg("error", "⚠️ " + ev.texto);
           finalizado = true;
         } else if (ev.tipo === "done") {
@@ -699,6 +808,16 @@ async function pedirRespuesta() {
             guardarConversacion();
             $("hud-tele").textContent = `última síntesis: ${ev.segundos ?? "?"}s · ≈${ev.tokens ?? "?"} tok`;
             if ($("toggle-voz").checked && textoFinal.trim()) leerTexto(textoFinal);
+          } else {
+            // Sin tokens: cerramos el panel y avisamos si no hay nada que mostrar
+            const resumen = panel.finalizar();
+            if (resumen) {
+              const r = crearFilaStream(resumen);
+              r.bubble.classList.add("md");
+              r.bubble.innerHTML = renderMarkdown("_(respuesta vacía)_");
+              historial.push({ role: "assistant", content: "" });
+              guardarConversacion();
+            }
           }
           fila = null;
           acumulado = "";
@@ -714,14 +833,16 @@ async function pedirRespuesta() {
         historial.push({ role: "assistant", content: acumulado });
         guardarConversacion();
       } else {
+        panel.quitar();
         addMsg("error", "⚠️ La conexión se cortó a mitad de la respuesta.");
       }
     }
   } catch (e) {
     if (fila) fila.row.remove();
+    panel.quitar();
     addMsg("error", "⚠️ No se pudo conectar con el servidor. ¿Está arrancado?");
   } finally {
-    quitarPensando();
+    panel.quitar();
     ocupado = false;
     $("btn-send").disabled = false;
     $("input").focus();
